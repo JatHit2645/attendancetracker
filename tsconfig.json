@@ -1,0 +1,12 @@
+{
+  "compilerOptions": {
+    "strict": false,
+    "baseUrl": ".",
+    "ignoreDeprecations": "6.0",
+    "paths": {
+      "@/*": ["src/*"]
+    }
+  },
+  "extends": "expo/tsconfig.base",
+  "exclude": ["src_backup_v1"]
+}

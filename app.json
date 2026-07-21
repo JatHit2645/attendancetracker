@@ -1,0 +1,51 @@
+{
+  "expo": {
+    "name": "Attendance Tracker",
+    "slug": "attendance-tracker",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "scheme": "attendance-tracker",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.attendancetracker.app"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#ffffff"
+      },
+      "package": "com.attendance.tracker",
+      "permissions": [
+        "USE_BIOMETRIC",
+        "USE_FINGERPRINT",
+        "VIBRATE",
+        "RECEIVE_BOOT_COMPLETED"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png",
+      "bundler": "metro"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/dummy-project-id",
+      "fallbackToCacheTimeout": 0
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "plugins": [
+      "expo-font",
+      "expo-splash-screen",
+      "expo-sharing",
+      "expo-updates"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "85a92c4a-5411-40b7-be04-f5a3f561b854"
+      }
+    },
+    "owner": "jathit2645"
+  }
+}
