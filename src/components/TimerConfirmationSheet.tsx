@@ -90,6 +90,8 @@ const parseTimeText = (text: string, baseDate: Date): Date | null => {
   return null;
 };
 
+const AnimatedTextInput = Animated.createAnimatedComponent(TextInput);
+
 export default function TimerConfirmationSheet({
   visible,
   timer,
@@ -106,6 +108,7 @@ export default function TimerConfirmationSheet({
   const [teacherName, setTeacherName] = useState<string>('');
   const [rating, setRating] = useState<string>('');
   const scaleAnim = useRef(new Animated.Value(1)).current;
+  const ratingAnim = useRef(new Animated.Value(-1)).current;
 
   const handleRatingChange = (text: string) => {
     Animated.sequence([
@@ -138,31 +141,31 @@ export default function TimerConfirmationSheet({
     }
   };
 
-  // Determine rating color
-  let ratingColor: string = border.default;
-  let ratingBg: string = glass.medium;
-  if (rating !== '') {
-    const num = parseFloat(rating);
-    if (!isNaN(num)) {
-      const clamped = Math.max(0, Math.min(10, num));
-      let r, g, b;
-      if (clamped <= 5) {
-        // Red (#EF4444) to Yellow (#F59E0B)
-        const t = clamped / 5;
-        r = Math.round(239 + t * (245 - 239));
-        g = Math.round(68 + t * (158 - 68));
-        b = Math.round(68 + t * (11 - 68));
-      } else {
-        // Yellow (#F59E0B) to Green (#10B981)
-        const t = (clamped - 5) / 5;
-        r = Math.round(245 + t * (16 - 245));
-        g = Math.round(158 + t * (185 - 158));
-        b = Math.round(11 + t * (129 - 11));
+  useEffect(() => {
+    if (rating === '') {
+      Animated.timing(ratingAnim, { toValue: -1, duration: 250, useNativeDriver: false }).start();
+    } else {
+      const num = parseFloat(rating);
+      if (!isNaN(num)) {
+        Animated.timing(ratingAnim, { toValue: Math.max(0, Math.min(10, num)), duration: 250, useNativeDriver: false }).start();
       }
-      ratingColor = `rgb(${r}, ${g}, ${b})`;
-      ratingBg = `rgba(${r}, ${g}, ${b}, 0.15)`;
     }
-  }
+  }, [rating]);
+
+  const animatedBorderColor = ratingAnim.interpolate({
+    inputRange: [-1, 0, 5, 10],
+    outputRange: [border.default, 'rgb(239, 68, 68)', 'rgb(245, 158, 11)', 'rgb(16, 185, 129)']
+  });
+
+  const animatedBgColor = ratingAnim.interpolate({
+    inputRange: [-1, 0, 5, 10],
+    outputRange: ['rgba(255, 255, 255, 0.03)', 'rgba(239, 68, 68, 0.1)', 'rgba(245, 158, 11, 0.1)', 'rgba(16, 185, 129, 0.1)']
+  });
+
+  const animatedTextColor = ratingAnim.interpolate({
+    inputRange: [-1, 0, 5, 10],
+    outputRange: [textColors.primary, 'rgb(239, 68, 68)', 'rgb(245, 158, 11)', 'rgb(16, 185, 129)']
+  });
 
   useEffect(() => {
     if (visible && timer) {
@@ -367,13 +370,13 @@ export default function TimerConfirmationSheet({
                   <View style={styles.formGroup}>
                     <Text style={styles.label}>RATING / 10 (OPTIONAL)</Text>
                     <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
-                      <TextInput
+                      <AnimatedTextInput
                         style={[
                           styles.ratingInput,
                           {
-                            borderColor: ratingColor,
-                            backgroundColor: ratingBg,
-                            color: ratingColor === border.default ? textColors.primary : ratingColor,
+                            borderColor: animatedBorderColor,
+                            backgroundColor: animatedBgColor,
+                            color: animatedTextColor,
                           }
                         ]}
                         value={rating}
@@ -641,9 +644,9 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.md,
     paddingHorizontal: spacing.md,
     borderRadius: radius.md,
-    backgroundColor: 'rgba(139, 92, 246, 0.1)', // Purple background
+    backgroundColor: 'rgba(168, 85, 247, 0.15)', // Solid Purple 500
     borderWidth: 1,
-    borderColor: 'rgba(139, 92, 246, 0.3)',
+    borderColor: 'rgba(168, 85, 247, 0.4)',
     alignItems: 'center',
     justifyContent: 'center',
     flex: 1,
@@ -671,7 +674,7 @@ const styles = StyleSheet.create({
   cancelText: {
     fontFamily: fontFamily.bold,
     fontSize: fontSize.sm,
-    color: '#8B5CF6',
+    color: '#A855F7',
   },
   discardText: {
     fontFamily: fontFamily.bold,
