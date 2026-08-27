@@ -179,14 +179,14 @@ export default function AddClassSheet({ visible, subjects, semesters, initialSem
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
           style={styles.keyboardContainer}
         >
-          <View style={[styles.sheetContainer, { maxHeight: Platform.OS === 'ios' ? '95%' : '100%' }]}>
+          <View style={[styles.sheetContainer, { maxHeight: '85%' }]}>
             {Platform.OS !== 'web' && (
               <View style={styles.handleContainer}>
                 <View style={styles.handleIndicator} />
               </View>
             )}
 
-            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
+            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: 40 }}>
             <View style={styles.header}>
               <View>
                 <Text style={styles.title}>{initialData ? 'Edit Class' : 'Add Class'}</Text>

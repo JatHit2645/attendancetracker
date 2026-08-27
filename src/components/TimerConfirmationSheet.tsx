@@ -223,14 +223,14 @@ export default function TimerConfirmationSheet({
             behavior={Platform.OS === 'ios' ? 'padding' : undefined}
             style={styles.keyboardContainer}
           >
-            <View style={[styles.sheetContainer, { maxHeight: Platform.OS === 'ios' ? '95%' : '100%' }]}>
+            <View style={[styles.sheetContainer, { maxHeight: '85%' }]}>
               {Platform.OS !== 'web' && (
                 <View style={styles.handleContainer}>
                   <View style={styles.handleIndicator} />
                 </View>
               )}
 
-              <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: spacing['2xl'] }}>
+              <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: spacing['2xl'] }}>
                 <View style={styles.header}>
                   <View>
                     <Text style={styles.title}>Lecture Finished</Text>

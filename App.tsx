@@ -36,6 +36,7 @@ import LockScreen from "./src/screens/auth/LockScreen";
 import { SyncService } from "./src/services/SyncService";
 import { supabase } from "./src/lib/supabase";
 import { NotificationService } from "./src/services/NotificationService";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 // Keep the splash screen visible while we load fonts
 SplashScreen.preventAutoHideAsync().catch(() => {});
@@ -106,6 +107,18 @@ export default function App() {
           if (isMounted) {
             setIsAuthenticated(!!session);
             setAppReady(true);
+            
+            // Check if biometric lock is disabled — if so, auto-unlock
+            if (session && Platform.OS !== 'web') {
+              try {
+                const bioSetting = await AsyncStorage.getItem("biometricsEnabled");
+                if (bioSetting === "false") {
+                  setIsUnlocked(true);
+                }
+              } catch (e) {
+                // If we can't read the setting, keep locked as default
+              }
+            }
           }
         } catch (err) {
           console.warn("Failed to check auth session", err);

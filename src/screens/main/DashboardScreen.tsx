@@ -322,7 +322,42 @@ export default function DashboardScreen({ isActive = true }: { isActive?: boolea
        return;
     }
 
-    // For present/absent, show confirmation sheet to capture rating/teacher/class_type
+    if (status === "absent") {
+       // Direct insert for absent
+       setMarkingIds((prev) => ({ ...prev, [item.id]: true }));
+       try {
+         const { data: { user } } = await supabase.auth.getUser();
+         if (!user) throw new Error("Not logged in");
+
+         const [sh, sm] = item.startTime.split(":").map(Number);
+         const [eh, em] = item.endTime.split(":").map(Number);
+         const durationMins = eh * 60 + em - (sh * 60 + sm);
+
+         const { error } = await (supabase as any).from("attendance_records").insert([{
+           user_id: user.id,
+           subject_id: item.subjectId,
+           date: selectedDate,
+           status: status,
+           ist_start_time: item.startTime + (item.startTime.length === 5 ? ":00" : ""),
+           ist_end_time: item.endTime + (item.endTime.length === 5 ? ":00" : ""),
+           duration_minutes: durationMins > 0 ? durationMins : 60,
+         }]);
+
+         if (error) throw error;
+         loadData();
+       } catch (e: any) {
+         alert("Error marking attendance: " + e.message);
+       } finally {
+         setMarkingIds((prev) => {
+           const copy = { ...prev };
+           delete copy[item.id];
+           return copy;
+         });
+       }
+       return;
+    }
+
+    // For present, show confirmation sheet to capture rating/teacher/class_type
     // We will build a mock timer state for the sheet
     const mockStart = new Date(`${selectedDate}T${item.startTime.length === 5 ? item.startTime + ':00' : item.startTime}`);
     const mockEnd = new Date(`${selectedDate}T${item.endTime.length === 5 ? item.endTime + ':00' : item.endTime}`);
@@ -881,15 +916,27 @@ export default function DashboardScreen({ isActive = true }: { isActive?: boolea
         </View>
       </View>
 
-      {/* ─── All Subjects ─── */}
+      {/* ─── Today's Subjects ─── */}
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Subjects</Text>
-          <Text style={styles.sectionMeta}>{stats.totalSubjects} active</Text>
+          <Text style={styles.sectionTitle}>Today's Subjects</Text>
+          <Text style={styles.sectionMeta}>{(() => { const ids = new Set(todayScheduleItems.map(i => i.subjectId)); return ids.size > 0 ? `${ids.size} scheduled` : 'No classes today'; })()}</Text>
         </View>
 
         <View style={styles.subjectsList}>
-          {subjects
+          {(() => {
+            const todaySubjectIds = new Set(todayScheduleItems.map(i => i.subjectId));
+            const todaySubjects = subjects.filter(s => todaySubjectIds.has(s.id));
+            
+            if (todaySubjects.length === 0) {
+              return (
+                <Text style={{ color: textColors.tertiary, padding: spacing.md, fontFamily: fontFamily.regular }}>
+                  No subjects scheduled for today.
+                </Text>
+              );
+            }
+            
+            return todaySubjects
             .sort((a, b) => {
               const aRecords = records.filter((r) => r.subject_id === a.id);
               const bRecords = records.filter((r) => r.subject_id === b.id);
@@ -927,7 +974,8 @@ export default function DashboardScreen({ isActive = true }: { isActive?: boolea
                   onStartTimer={handleStartTimer}
                 />
               );
-            })}
+            });
+          })()}
         </View>
       </View>
 
