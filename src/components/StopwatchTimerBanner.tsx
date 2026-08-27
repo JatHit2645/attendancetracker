@@ -1,8 +1,8 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Alert, Animated, Platform } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import { canvas, text as textColors, accent, shadow, gauge, glass, border } from '../theme/colors';
+import { canvas, text as textColors, accent, shadow, gauge, glass, border, palette } from '../theme/colors';
 import { fontFamily, fontSize } from '../theme/typography';
 import { spacing, radius } from '../theme/spacing';
 import { TimerState } from '../services/TimerService';
@@ -20,12 +20,14 @@ export default function StopwatchTimerBanner({
   const pulseAnim = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
-    Animated.loop(
+    const anim = Animated.loop(
       Animated.sequence([
         Animated.timing(pulseAnim, { toValue: 0.3, duration: 800, useNativeDriver: true }),
         Animated.timing(pulseAnim, { toValue: 1, duration: 800, useNativeDriver: true })
       ])
-    ).start();
+    );
+      anim.start();
+      return () => anim.stop();
   }, []);
 
   useEffect(() => {
@@ -92,7 +94,7 @@ export default function StopwatchTimerBanner({
         <Text style={styles.subjectName} numberOfLines={1}>{timer.subjectName}</Text>
 
         <View style={styles.actionRow}>
-          <TouchableOpacity 
+          <TouchableOpacity hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} 
             style={styles.stopButton} 
             activeOpacity={0.8} 
             onPress={handleStopPress}
@@ -100,7 +102,7 @@ export default function StopwatchTimerBanner({
             accessibilityRole="button"
             accessibilityLabel="End and save lecture"
           >
-            <Ionicons name="stop" size={16} color="#FFF" style={{ marginRight: spacing.sm }} />
+            <Ionicons name="stop" size={16} color={palette.white} style={{ marginRight: spacing.sm }} />
             <Text style={styles.stopButtonText}>End & Save Lecture</Text>
           </TouchableOpacity>
         </View>
@@ -190,7 +192,7 @@ const styles = StyleSheet.create({
   stopButtonText: {
     fontFamily: fontFamily.bold,
     fontSize: fontSize.sm,
-    color: '#FFF',
+    color: palette.white,
     letterSpacing: 0.5,
   },
 });

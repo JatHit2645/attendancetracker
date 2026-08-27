@@ -179,13 +179,14 @@ export default function AddClassSheet({ visible, subjects, semesters, initialSem
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
           style={styles.keyboardContainer}
         >
-          <View style={styles.sheetContainer}>
+          <View style={[styles.sheetContainer, { maxHeight: Platform.OS === 'ios' ? '95%' : '100%' }]}>
             {Platform.OS !== 'web' && (
               <View style={styles.handleContainer}>
                 <View style={styles.handleIndicator} />
               </View>
             )}
 
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
             <View style={styles.header}>
               <View>
                 <Text style={styles.title}>{initialData ? 'Edit Class' : 'Add Class'}</Text>
@@ -349,7 +350,8 @@ export default function AddClassSheet({ visible, subjects, semesters, initialSem
                   <Ionicons name="trash-outline" size={20} color={'#DC2626'} />
                 </TouchableOpacity>
               )}
-            </View>
+              </View>
+            </ScrollView>
           </View>
         </KeyboardAvoidingView>
       </View>

@@ -11,7 +11,7 @@ BEGIN
   -- Wipes the user row from auth.users (cascades to all other tables)
   DELETE FROM auth.users WHERE id = auth.uid();
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp;
 
 -- Expose function execution to authenticated users
 REVOKE ALL ON FUNCTION public.delete_user() FROM public;

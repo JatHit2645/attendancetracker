@@ -75,6 +75,7 @@ export const canvas = {
   elevated: '#0C111C', 
   overlay: '#131A2A',
   popover: '#1A2338',
+  backdrop: 'rgba(6, 9, 18, 0.85)',
 } as const;
 
 // ─── Glass & Frosted Surfaces ──────────────────────────────────────
@@ -165,47 +166,54 @@ export const gradient = {
 
 // ─── Shadows ───────────────────────────────────────────────────────
 export const shadow = {
-  color: palette.black,
   subtle: Platform.OS === 'web' ? { boxShadow: '0 2px 8px rgba(0,0,0,0.25)' } as any : {
     shadowColor: palette.black,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.25,
     shadowRadius: 8,
-    elevation: 3,
+    elevation: 0,
   },
   low: Platform.OS === 'web' ? { boxShadow: '0 2px 8px rgba(0,0,0,0.25)' } as any : {
     shadowColor: palette.black,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.25,
     shadowRadius: 8,
-    elevation: 3,
+    elevation: 0,
   },
   medium: Platform.OS === 'web' ? { boxShadow: '0 4px 16px rgba(0,0,0,0.35)' } as any : {
     shadowColor: palette.black,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.35,
     shadowRadius: 16,
-    elevation: 6,
+    elevation: 0,
   },
   strong: Platform.OS === 'web' ? { boxShadow: '0 8px 24px rgba(0,0,0,0.45)' } as any : {
     shadowColor: palette.black,
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.45,
     shadowRadius: 24,
-    elevation: 12,
+    elevation: 0,
   },
   high: Platform.OS === 'web' ? { boxShadow: '0 8px 24px rgba(0,0,0,0.45)' } as any : {
     shadowColor: palette.black,
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.45,
     shadowRadius: 24,
-    elevation: 12,
+    elevation: 0,
   },
   glow: (color: string) => Platform.OS === 'web' ? { boxShadow: `0 0 16px ${color}` } as any : {
     shadowColor: color,
     shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 0.5,
     shadowRadius: 16,
-    elevation: 10,
+    elevation: 0,
   },
 };
+
+// ─── Heat Colors ───────────────────────────────────────────────────
+export const heat = {
+  limeHeat: '#84cc16',
+  orangeHeat: '#f97316',
+  yellowHeat: '#eab308',
+} as const;
+

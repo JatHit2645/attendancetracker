@@ -1,6 +1,6 @@
 /**
  * Attendance Tracker — Subject Card
- * 
+ *
  * Individual subject attendance card for the dashboard.
  * Features:
  * - Mini circular gauge ring
@@ -11,25 +11,30 @@
  * - Lectures needed / can skip indicator
  */
 
-import { View, Text, StyleSheet, TouchableOpacity, Pressable } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import AttendanceGauge from './AttendanceGauge';
+import React from "react";
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+} from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import AttendanceGauge from "./AttendanceGauge";
 import {
   glass,
   border,
   text as textColors,
   gauge as gaugeColors,
-  shadow,
-} from '../theme/colors';
-import { fontFamily, fontSize } from '../theme/typography';
-import { spacing, radius } from '../theme/spacing';
+} from "../theme/colors";
+import { fontFamily, fontSize } from "../theme/typography";
+import { spacing, radius } from "../theme/spacing";
 import {
   Subject,
   calculatePercentage,
   getAttendanceStatus,
   lecturesNeededForTarget,
   lecturesCanMiss,
-} from '../data/mockData';
+} from "../data/mockData";
 
 interface SubjectCardProps {
   subject: Subject;
@@ -37,59 +42,78 @@ interface SubjectCardProps {
   onStartTimer?: (subject: Subject) => void;
 }
 
-function getStatusLabel(status: 'safe' | 'warning' | 'danger' | 'critical'): string {
+function getStatusLabel(
+  status: "safe" | "warning" | "danger" | "critical",
+): string {
   switch (status) {
-    case 'safe': return 'On Track';
-    case 'warning': return 'Borderline';
-    case 'danger': return 'At Risk';
-    case 'critical': return 'Critical';
+    case "safe":
+      return "On Track";
+    case "warning":
+      return "Borderline";
+    case "danger":
+      return "At Risk";
+    case "critical":
+      return "Critical";
   }
 }
 
-function getStatusColor(status: 'safe' | 'warning' | 'danger' | 'critical'): string {
+function getStatusColor(
+  status: "safe" | "warning" | "danger" | "critical",
+): string {
   switch (status) {
-    case 'safe': return gaugeColors.safe;
-    case 'warning': return gaugeColors.warning;
-    case 'danger': return gaugeColors.danger;
-    case 'critical': return gaugeColors.critical;
+    case "safe":
+      return gaugeColors.safe;
+    case "warning":
+      return gaugeColors.warning;
+    case "danger":
+      return gaugeColors.danger;
+    case "critical":
+      return gaugeColors.critical;
   }
 }
 
-export default function SubjectCard({ subject, onPress, onStartTimer }: SubjectCardProps) {
-  const percentage = calculatePercentage(subject.totalAttended, subject.totalConducted);
+export default React.memo(function SubjectCard({
+  subject,
+  onPress,
+  onStartTimer,
+}: SubjectCardProps) {
+  const percentage = calculatePercentage(
+    subject.totalAttended,
+    subject.totalConducted,
+  );
   const status = getAttendanceStatus(percentage, subject.threshold);
   const statusLabel = getStatusLabel(status);
   const statusColor = getStatusColor(status);
-  const subjectColor = subject.color || '#6366F1';
+  const subjectColor = subject.color || "#6366F1";
 
   const needed = lecturesNeededForTarget(
     subject.totalAttended,
     subject.totalConducted,
-    subject.threshold
+    subject.threshold,
   );
   const canMiss = lecturesCanMiss(
     subject.totalAttended,
     subject.totalConducted,
-    subject.threshold
+    subject.threshold,
   );
 
-  let helperText = '';
-  if (status === 'safe' || status === 'warning') {
+  let helperText = "";
+  if (status === "safe" || status === "warning") {
     if (canMiss > 0) helperText = `Can miss ${canMiss} more`;
-    else helperText = 'Cannot miss any';
+    else helperText = "Cannot miss any";
   } else {
-    if (needed > 0) helperText = `Need ${needed} more to reach ${subject.threshold}%`;
+    if (needed > 0)
+      helperText = `Need ${needed} more to reach ${subject.threshold}%`;
   }
 
   return (
-    <View 
-      style={[styles.cardContainer, shadow.glow(subjectColor)]}
+    <View
+      style={styles.cardContainer}
       accessible={true}
       accessibilityRole="button"
       accessibilityLabel={`${subject.name}. ${percentage}%. ${statusLabel}. ${helperText}`}
     >
-      <TouchableOpacity
-        activeOpacity={0.7}
+      <TouchableOpacity hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} accessibilityRole="button"         activeOpacity={0.7}
         onPress={onPress}
         style={[styles.cardContent, { borderLeftColor: subjectColor }]}
       >
@@ -109,14 +133,23 @@ export default function SubjectCard({ subject, onPress, onStartTimer }: SubjectC
             <Text style={styles.statsText}>
               <Text style={styles.statsHighlight}>{subject.totalAttended}</Text>
               <Text style={styles.statsSeparator}> / </Text>
-              <Text style={styles.statsSecondary}>{subject.totalConducted}</Text>
+              <Text style={styles.statsSecondary}>
+                {subject.totalConducted}
+              </Text>
               <Text style={styles.statsLabel}> lectures</Text>
             </Text>
           </View>
 
           <View style={styles.bottomRow}>
-            <View style={[styles.statusBadge, { backgroundColor: statusColor + '20' }]}>
-              <View style={[styles.statusDot, { backgroundColor: statusColor }]} />
+            <View
+              style={[
+                styles.statusBadge,
+                { backgroundColor: statusColor + "20" },
+              ]}
+            >
+              <View
+                style={[styles.statusDot, { backgroundColor: statusColor }]}
+              />
               <Text style={[styles.statusText, { color: statusColor }]}>
                 {statusLabel}
               </Text>
@@ -145,20 +178,22 @@ export default function SubjectCard({ subject, onPress, onStartTimer }: SubjectC
       </TouchableOpacity>
 
       {onStartTimer && (
-        <TouchableOpacity
-          style={[styles.timerButton, { backgroundColor: subjectColor + '20' }]}
+        <TouchableOpacity hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} 
+          style={[styles.timerButton, { backgroundColor: subjectColor + "20" }]}
           activeOpacity={0.7}
           onPress={() => onStartTimer(subject)}
           accessibilityLabel={`Start timer for ${subject.shortName}`}
           accessibilityRole="button"
         >
           <Ionicons name="stopwatch-outline" size={16} color={subjectColor} />
-          <Text style={[styles.timerButtonText, { color: subjectColor }]}>Start Timer</Text>
+          <Text style={[styles.timerButtonText, { color: subjectColor }]}>
+            Start Timer
+          </Text>
         </TouchableOpacity>
       )}
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   cardContainer: {
@@ -166,11 +201,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: border.default,
     borderRadius: radius.xl,
-    overflow: 'hidden', // Ensure the left border respects the radius
+    overflow: "hidden", // Ensure the left border respects the radius
   },
   cardContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     borderLeftWidth: 4,
     paddingVertical: spacing.md,
     paddingHorizontal: spacing.lg,
@@ -181,9 +216,9 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   topRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
   },
   nameContainer: {
     flex: 1,
@@ -199,11 +234,11 @@ const styles = StyleSheet.create({
     fontFamily: fontFamily.bold,
     fontSize: fontSize.xs,
     letterSpacing: 1.2,
-    textTransform: 'uppercase',
+    textTransform: "uppercase",
   },
   statsRow: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
+    flexDirection: "row",
+    alignItems: "baseline",
   },
   statsText: {
     fontSize: fontSize.sm,
@@ -228,13 +263,13 @@ const styles = StyleSheet.create({
     fontSize: fontSize.sm,
   },
   bottomRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: spacing.sm,
   },
   statusBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     paddingHorizontal: spacing.sm,
     paddingVertical: 4,
     borderRadius: radius.full,
@@ -257,8 +292,8 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   gaugeSection: {
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
   },
   gaugePercentage: {
     fontFamily: fontFamily.bold,
@@ -266,9 +301,9 @@ const styles = StyleSheet.create({
     color: textColors.primary,
   },
   timerButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
     paddingVertical: spacing.md,
     gap: spacing.sm,
     borderTopWidth: 1,

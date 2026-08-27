@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import {
+import { 
   View,
   Text,
   StyleSheet,
@@ -8,8 +8,9 @@ import {
   Modal,
   KeyboardAvoidingView,
   Platform,
-  Keyboard,
   TouchableWithoutFeedback,
+  ScrollView,
+  useWindowDimensions
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
@@ -21,6 +22,7 @@ import {
   text as textColors,
   accent,
   shadow,
+  palette,
 } from '../theme/colors';
 import { fontFamily, fontSize } from '../theme/typography';
 import { spacing, radius } from '../theme/spacing';
@@ -34,33 +36,79 @@ interface SubjectBottomSheetProps {
 }
 
 export default function SubjectBottomSheet({ visible, initialData, onClose, onSave, onDelete }: SubjectBottomSheetProps) {
+  const { height } = useWindowDimensions();
   const [name, setName] = React.useState('');
   const [shortName, setShortName] = React.useState('');
   const [threshold, setThreshold] = React.useState('75');
+  const [teachers, setTeachers] = React.useState<string[]>([]);
+  const [teacherInput, setTeacherInput] = React.useState('');
+  const [teacherShortName, setTeacherShortName] = React.useState('');
 
   React.useEffect(() => {
     if (visible && initialData) {
       setName(initialData.name);
-      setShortName(initialData.shortName);
-      setThreshold(initialData.threshold.toString());
+      setShortName(initialData.shortName || (initialData as any).short_name || '');
+      setThreshold(initialData.threshold?.toString() || (initialData as any).target_threshold?.toString() || '75');
+      setTeachers((initialData as any).teachers || []);
     } else if (visible && !initialData) {
       setName('');
       setShortName('');
       setThreshold('75');
+      setTeachers([]);
     }
+    setTeacherInput('');
+    setTeacherShortName('');
   }, [visible, initialData]);
 
   const handleSave = () => {
-    if (!name || !shortName) return;
+    if (!name.trim() || !shortName.trim()) return;
+    let parsedThreshold = parseInt(threshold, 10);
+    if (isNaN(parsedThreshold)) parsedThreshold = 75;
+    parsedThreshold = Math.min(100, Math.max(1, parsedThreshold));
+
     onSave({
-      name,
-      shortName,
-      threshold: parseInt(threshold, 10) || 75,
-    });
+      name: name.trim(),
+      shortName: shortName.trim().toUpperCase(),
+      threshold: parsedThreshold,
+      teachers: teachers,
+    } as any);
     setName('');
     setShortName('');
     setThreshold('75');
+    setTeachers([]);
+    setTeacherInput('');
+    setTeacherShortName('');
     onClose();
+  };
+
+  const handleAddTeacher = () => {
+    const tName = teacherInput.trim();
+    const tShort = teacherShortName.trim().toUpperCase();
+    if (!tName) return;
+    
+    // Store as stringified JSON if short name exists, else just string (for backward compatibility)
+    const newEntry = tShort ? JSON.stringify({ n: tName, s: tShort }) : tName;
+    
+    if (!teachers.includes(newEntry)) {
+      setTeachers([...teachers, newEntry]);
+      setTeacherInput('');
+      setTeacherShortName('');
+    }
+  };
+
+  const handleRemoveTeacher = (teacher: string) => {
+    setTeachers(teachers.filter(t => t !== teacher));
+  };
+
+  const handleThresholdChange = (text: string) => {
+    const cleaned = text.replace(/\D/g, '');
+    let parsed = parseInt(cleaned, 10);
+    if (!isNaN(parsed)) {
+      if (parsed > 100) parsed = 100;
+      setThreshold(parsed.toString());
+    } else {
+      setThreshold('');
+    }
   };
 
   return (
@@ -70,22 +118,21 @@ export default function SubjectBottomSheet({ visible, initialData, onClose, onSa
       animationType={Platform.OS === 'web' ? 'fade' : 'slide'}
       onRequestClose={onClose}
     >
-      <TouchableWithoutFeedback onPress={() => Keyboard.dismiss()}>
-        <View style={styles.overlay}>
-          <TouchableWithoutFeedback onPress={onClose}>
-            <View style={styles.backdrop}>
-              {Platform.OS !== 'web' ? (
-                <BlurView intensity={30} style={StyleSheet.absoluteFill} tint="dark" />
-              ) : (
-                <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.7)' }]} />
-              )}
-            </View>
-          </TouchableWithoutFeedback>
+      <View style={styles.overlay}>
+        <TouchableWithoutFeedback onPress={onClose}>
+          <View style={styles.backdrop}>
+            {Platform.OS !== 'web' ? (
+              <BlurView intensity={30} style={StyleSheet.absoluteFill} tint="dark" />
+            ) : (
+              <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.7)' }]} />
+            )}
+          </View>
+        </TouchableWithoutFeedback>
 
-          <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-            style={styles.keyboardContainer}
-          >
+        <KeyboardAvoidingView
+          behavior="padding"
+          style={styles.keyboardContainer}
+        >
             <View style={styles.sheetContainer}>
               {Platform.OS !== 'web' && (
                 <View style={styles.handleContainer}>
@@ -98,11 +145,16 @@ export default function SubjectBottomSheet({ visible, initialData, onClose, onSa
                   <Text style={styles.title}>{initialData ? 'Edit Subject' : 'New Subject'}</Text>
                   <Text style={styles.subtitle}>{initialData ? 'Update subject targets' : 'Set up a new academic module'}</Text>
                 </View>
-                <TouchableOpacity onPress={onClose} style={styles.closeButton}>
+                <TouchableOpacity hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} accessibilityRole="button" onPress={onClose} style={styles.closeButton}>
                   <Ionicons name="close" size={20} color={textColors.secondary} />
                 </TouchableOpacity>
               </View>
 
+              <ScrollView 
+                style={{ flexShrink: 1, maxHeight: height * 0.7 }} 
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={false}
+              >
               <View style={styles.form}>
                 <View style={styles.formGroup}>
                   <Text style={styles.label}>SUBJECT NAME</Text>
@@ -136,7 +188,7 @@ export default function SubjectBottomSheet({ visible, initialData, onClose, onSa
                     placeholder="75"
                     placeholderTextColor={textColors.disabled}
                     value={threshold}
-                    onChangeText={setThreshold}
+                    onChangeText={handleThresholdChange}
                     keyboardType="number-pad"
                     maxLength={3}
                   />
@@ -144,11 +196,64 @@ export default function SubjectBottomSheet({ visible, initialData, onClose, onSa
                     This is the minimum attendance required for this specific subject.
                   </Text>
                 </View>
+
+                <View style={styles.formGroup}>
+                  <Text style={styles.label}>FACULTY / TEACHERS (OPTIONAL)</Text>
+                  <View style={styles.teacherInputRow}>
+                    <View style={{ flex: 1, flexDirection: 'row', gap: spacing.sm }}>
+                      <TextInput
+                        style={[styles.input, { flex: 2, paddingVertical: spacing.md }]}
+                        placeholder="Name (e.g. Dr. Smith)"
+                        placeholderTextColor={textColors.disabled}
+                        value={teacherInput}
+                        onChangeText={setTeacherInput}
+                      />
+                      <TextInput
+                        style={[styles.input, { flex: 1, paddingVertical: spacing.md }]}
+                        placeholder="Code"
+                        placeholderTextColor={textColors.disabled}
+                        value={teacherShortName}
+                        onChangeText={setTeacherShortName}
+                        maxLength={5}
+                        autoCapitalize="characters"
+                        onSubmitEditing={handleAddTeacher}
+                      />
+                    </View>
+                    <TouchableOpacity onPress={handleAddTeacher} style={styles.addTeacherBtn}>
+                      <Ionicons name="add" size={20} color={palette.white} />
+                    </TouchableOpacity>
+                  </View>
+
+                  {teachers.length > 0 && (
+                    <View style={styles.teachersList}>
+                      {teachers.map((t, index) => {
+                        let display = t;
+                        try {
+                          if (t.startsWith('{')) {
+                            const obj = JSON.parse(t);
+                            display = `${obj.n} (${obj.s})`;
+                          }
+                        } catch(e) {}
+                        return (
+                          <View key={index} style={styles.teacherChip}>
+                            <Text style={styles.teacherChipText}>{display}</Text>
+                            <TouchableOpacity onPress={() => handleRemoveTeacher(t)} style={styles.teacherChipRemove}>
+                              <Ionicons name="close-circle" size={16} color={textColors.tertiary} />
+                            </TouchableOpacity>
+                          </View>
+                        );
+                      })}
+                    </View>
+                  )}
+                  <Text style={styles.helperText}>
+                    Add all professors/tutors who teach this subject.
+                  </Text>
+                </View>
               </View>
+            </ScrollView>
 
               <View style={styles.footer}>
-                <TouchableOpacity
-                  style={[styles.saveButton, initialData && { flex: 1 }]}
+                <TouchableOpacity hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} accessibilityRole="button"                   style={[styles.saveButton, initialData && { flex: 1 }]}
                   onPress={handleSave}
                   activeOpacity={0.8}
                 >
@@ -161,19 +266,17 @@ export default function SubjectBottomSheet({ visible, initialData, onClose, onSa
                 </TouchableOpacity>
 
                 {initialData && onDelete && (
-                  <TouchableOpacity
-                    style={styles.deleteButton}
+                  <TouchableOpacity hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} accessibilityRole="button"                     style={styles.deleteButton}
                     onPress={() => onDelete()}
                     activeOpacity={0.8}
                   >
-                    <Ionicons name="trash-outline" size={20} color={'#DC2626'} />
+                    <Ionicons name="trash-outline" size={20} color={palette.red[600]} />
                   </TouchableOpacity>
                 )}
               </View>
             </View>
           </KeyboardAvoidingView>
         </View>
-      </TouchableWithoutFeedback>
     </Modal>
   );
 }
@@ -194,7 +297,7 @@ const styles = StyleSheet.create({
     zIndex: 10,
   },
   sheetContainer: {
-    backgroundColor: glass.strong,
+    backgroundColor: canvas.elevated,
     borderTopLeftRadius: Platform.OS === 'web' ? radius['2xl'] : radius['3xl'],
     borderTopRightRadius: Platform.OS === 'web' ? radius['2xl'] : radius['3xl'],
     borderBottomLeftRadius: Platform.OS === 'web' ? radius['2xl'] : 0,
@@ -295,17 +398,57 @@ const styles = StyleSheet.create({
   saveButtonText: {
     fontFamily: fontFamily.bold,
     fontSize: fontSize.base,
-    color: '#fff',
+    color: palette.white,
     letterSpacing: 0.5,
   },
   deleteButton: {
     width: 52,
     height: 52,
     borderRadius: radius.lg,
-    backgroundColor: '#DC2626' + '15',
+    backgroundColor: palette.red[600] + '15',
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: '#DC2626' + '40',
+    borderColor: palette.red[600] + '40',
+  },
+  teacherInputRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    alignItems: 'center',
+  },
+  addTeacherBtn: {
+    backgroundColor: glass.light,
+    width: 44,
+    height: 44,
+    borderRadius: radius.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: border.default,
+  },
+  teachersList: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+    marginTop: spacing.xs,
+  },
+  teacherChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: glass.medium,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.full,
+    borderWidth: 1,
+    borderColor: border.default,
+    gap: spacing.xs,
+  },
+  teacherChipText: {
+    fontFamily: fontFamily.medium,
+    fontSize: fontSize.sm,
+    color: textColors.primary,
+  },
+  teacherChipRemove: {
+    marginLeft: 4,
   },
 });

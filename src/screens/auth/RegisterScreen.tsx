@@ -42,12 +42,13 @@ export default function RegisterScreen({
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+  const [messageType, setMessageType] = useState<'error' | 'success'>('error');
   const [focusedField, setFocusedField] = useState<string | null>(null);
 
   // Animation values
   const buttonScale = useRef(new Animated.Value(1)).current;
-  const errorOpacity = useRef(new Animated.Value(0)).current;
+  const messageOpacity = useRef(new Animated.Value(0)).current;
   const animationRef = useRef<Animated.CompositeAnimation | null>(null);
 
   const handlePressIn = () => {
@@ -66,19 +67,20 @@ export default function RegisterScreen({
     }).start();
   };
 
-  const showError = (message: string) => {
-    setError(message);
+  const showMessage = (msg: string, type: 'error' | 'success' = 'error') => {
+    setMessage(msg);
+    setMessageType(type);
     if (animationRef.current) {
       animationRef.current.stop();
     }
     animationRef.current = Animated.sequence([
-      Animated.timing(errorOpacity, {
+      Animated.timing(messageOpacity, {
         toValue: 1,
         duration: 200,
         useNativeDriver: true,
       }),
-      Animated.delay(4000),
-      Animated.timing(errorOpacity, {
+      Animated.delay(type === 'success' ? 7000 : 4000),
+      Animated.timing(messageOpacity, {
         toValue: 0,
         duration: 300,
         useNativeDriver: true,
@@ -86,7 +88,7 @@ export default function RegisterScreen({
     ]);
     animationRef.current.start(({ finished }) => {
       if (finished) {
-        setError(null);
+        setMessage(null);
       }
     });
   };
@@ -95,44 +97,54 @@ export default function RegisterScreen({
     // Validation
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!email.trim()) {
-      showError('Please enter your email address.');
+      showMessage('Please enter your email address.', 'error');
       return;
     }
     if (!emailRegex.test(email.trim())) {
-      showError('Please enter a valid email address (e.g., name@example.com).');
+      showMessage('Please enter a valid email address (e.g., name@example.com).', 'error');
       return;
     }
     if (!password.trim()) {
-      showError('Please create a password.');
+      showMessage('Please create a password.', 'error');
       return;
     }
     if (password.length < 8) {
-      showError('Password must be at least 8 characters.');
+      showMessage('Password must be at least 8 characters.', 'error');
       return;
     }
     if (password !== confirmPassword) {
-      showError('Passwords do not match.');
+      showMessage('Passwords do not match.', 'error');
       return;
     }
 
     setIsLoading(true);
-    setError(null);
+    setMessage(null);
 
     try {
-      const { error: authError } = await supabase.auth.signUp({
+      const { data, error: authError } = await supabase.auth.signUp({
         email: email.trim(),
         password,
         options: { data: { full_name: name.trim() } },
       });
       if (authError) throw authError;
 
-      // Seed the database with an initial semester for the new user
-      await DatabaseService.initializeNewUser();
-
-      if (onRegisterSuccess) onRegisterSuccess();
+      if (data.session) {
+        // Email confirmation is disabled, user is immediately logged in
+        await DatabaseService.initializeNewUser();
+        if (onRegisterSuccess) onRegisterSuccess();
+      } else {
+        // Email confirmation is enabled, user needs to verify first
+        showMessage(
+          'Verification email sent! Please check your inbox and verify your email, then return here to sign in.',
+          'success'
+        );
+        setTimeout(() => {
+          onNavigateToLogin();
+        }, 7000);
+      }
     } catch (err: any) {
-      // PRD 3.9: Never reveal whether email exists to prevent enumeration leaks
-      showError('Unable to create account. Please ensure your details are correct or try signing in.');
+      console.error("Signup error details:", err);
+      showMessage(err?.message || 'Unable to create account. Please try again.', 'error');
     } finally {
       setIsLoading(false);
     }
@@ -162,12 +174,18 @@ export default function RegisterScreen({
             </Text>
           </View>
 
-          {/* ─── Error Banner ─── */}
-          {error && (
+          {/* ─── Status Banner ─── */}
+          {message && (
             <Animated.View
-              style={[styles.errorBanner, { opacity: errorOpacity }]}
+              style={[
+                styles.messageBanner,
+                messageType === 'success' ? styles.successBanner : styles.errorBanner,
+                { opacity: messageOpacity }
+              ]}
             >
-              <Text style={styles.errorText}>{error}</Text>
+              <Text style={[styles.messageText, messageType === 'success' ? styles.successText : styles.errorText]}>
+                {message}
+              </Text>
             </Animated.View>
           )}
 
@@ -356,21 +374,35 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 
-  // ── Error Banner
-  errorBanner: {
-    backgroundColor: feedback.error + '18',
+  // ── Message Banner
+  messageBanner: {
     borderWidth: 1,
-    borderColor: feedback.error + '30',
     borderRadius: radius.md,
     paddingVertical: spacing.md,
     paddingHorizontal: spacing.lg,
     marginBottom: spacing.xl,
+    maxWidth: 480,
+    width: '100%',
+    alignSelf: 'center',
   },
-  errorText: {
+  errorBanner: {
+    backgroundColor: feedback.error + '18',
+    borderColor: feedback.error + '30',
+  },
+  successBanner: {
+    backgroundColor: feedback.success + '18',
+    borderColor: feedback.success + '30',
+  },
+  messageText: {
     fontFamily: fontFamily.medium,
     fontSize: fontSize.sm,
-    color: feedback.error,
     textAlign: 'center',
+  },
+  errorText: {
+    color: feedback.error,
+  },
+  successText: {
+    color: feedback.success,
   },
 
   // ── Glass Card Form
@@ -381,6 +413,9 @@ const styles = StyleSheet.create({
     borderRadius: radius.xl,
     padding: spacing['2xl'],
     gap: spacing.lg,
+    maxWidth: 480,
+    width: '100%',
+    alignSelf: 'center',
   },
 
   // ── Form Fields
@@ -460,7 +495,7 @@ const styles = StyleSheet.create({
   },
   createButtonText: {
     ...textStyle.button,
-    color: '#FFFFFF',
+    color: text.primary,
   },
 
   // ── Footer

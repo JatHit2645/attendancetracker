@@ -25,7 +25,7 @@ import {
   accent,
   shadow,
 } from '../theme/colors';
-import { fontFamily, fontSize, textStyle } from '../theme/typography';
+import { fontFamily, fontSize } from '../theme/typography';
 import { spacing, radius } from '../theme/spacing';
 import { TodayScheduleItem } from '../data/mockData';
 
@@ -167,15 +167,25 @@ export default function ScheduleItem({ item, isLast, onMarkAttendance }: Schedul
           </View>
 
           <View style={styles.subjectRow}>
-            <Text
-              style={[
-                styles.subjectName,
-                isCompleted && !item.attendanceStatus && styles.subjectNameFaded,
-              ]}
-              numberOfLines={1}
-            >
-              {item.subjectName}
-            </Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flex: 1 }}>
+              <Text
+                style={[
+                  styles.subjectName,
+                  isCompleted && !item.attendanceStatus && styles.subjectNameFaded,
+                  { flex: 1, marginRight: 8 }
+                ]}
+                numberOfLines={1}
+              >
+                {item.subjectName}
+              </Text>
+              {item.teacher ? (
+                <View style={{ backgroundColor: item.color + '20', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
+                  <Text style={{ color: item.color, fontSize: 10, fontFamily: fontFamily.bold }}>
+                    {item.classType === 'lab' ? '🧪 ' : item.classType === 'tutorial' ? '📚 ' : ''}{item.teacher}
+                  </Text>
+                </View>
+              ) : null}
+            </View>
           </View>
 
           <View style={styles.badgeRow}>
@@ -188,7 +198,7 @@ export default function ScheduleItem({ item, isLast, onMarkAttendance }: Schedul
 
           {expanded && (
             <View style={styles.actionBar}>
-              <TouchableOpacity 
+              <TouchableOpacity hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} 
                 style={[styles.actionBtn, { backgroundColor: attendanceColors.present.surface }]} 
                 onPress={() => handleMark('present')}
                 accessibilityRole="button"
@@ -197,7 +207,7 @@ export default function ScheduleItem({ item, isLast, onMarkAttendance }: Schedul
                 <Ionicons name="checkmark-circle" size={16} color={attendanceColors.present.base} />
                 <Text style={[styles.actionBtnText, { color: attendanceColors.present.base }]}>Present</Text>
               </TouchableOpacity>
-              <TouchableOpacity 
+              <TouchableOpacity hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} 
                 style={[styles.actionBtn, { backgroundColor: attendanceColors.absent.surface }]} 
                 onPress={() => handleMark('absent')}
                 accessibilityRole="button"
@@ -206,7 +216,7 @@ export default function ScheduleItem({ item, isLast, onMarkAttendance }: Schedul
                 <Ionicons name="close-circle" size={16} color={attendanceColors.absent.base} />
                 <Text style={[styles.actionBtnText, { color: attendanceColors.absent.base }]}>Absent</Text>
               </TouchableOpacity>
-              <TouchableOpacity 
+              <TouchableOpacity hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} 
                 style={[styles.actionBtn, { backgroundColor: attendanceColors.cancelled.surface }]} 
                 onPress={() => handleMark('cancelled')}
                 accessibilityRole="button"
@@ -215,7 +225,7 @@ export default function ScheduleItem({ item, isLast, onMarkAttendance }: Schedul
                 <Ionicons name="ban" size={16} color={attendanceColors.cancelled.base} />
                 <Text style={[styles.actionBtnText, { color: attendanceColors.cancelled.base }]}>Cancelled</Text>
               </TouchableOpacity>
-              <TouchableOpacity 
+              <TouchableOpacity hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} 
                 style={[styles.actionBtn, { backgroundColor: glass.medium }]} 
                 onPress={() => handleMark('holiday')}
                 accessibilityRole="button"

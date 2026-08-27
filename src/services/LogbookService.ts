@@ -1,4 +1,4 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { secureStore } from '../lib/secureStore';
 
 export interface LogEntry {
   id: string;
@@ -14,7 +14,7 @@ const STORAGE_KEY = 'attendance_tracker_logbook_v1';
 export const LogbookService = {
   async fetchLogs(): Promise<LogEntry[]> {
     try {
-      const data = await AsyncStorage.getItem(STORAGE_KEY);
+      const data = await secureStore.getItem(STORAGE_KEY);
       if (!data) return [];
       const parsed = JSON.parse(data) as LogEntry[];
       // Sort newest first
@@ -46,7 +46,7 @@ export const LogbookService = {
       
       // Limit to 500 logs to prevent storage bloat
       const trimmed = logs.slice(0, 500);
-      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(trimmed));
+      await secureStore.setItem(STORAGE_KEY, JSON.stringify(trimmed));
     } catch (e) {
       console.warn('Failed to add log to logbook', e);
     }
@@ -54,7 +54,7 @@ export const LogbookService = {
 
   async clearLogs(): Promise<void> {
     try {
-      await AsyncStorage.removeItem(STORAGE_KEY);
+      await secureStore.deleteItem(STORAGE_KEY);
     } catch (e) {
       console.warn('Failed to clear logbook', e);
     }

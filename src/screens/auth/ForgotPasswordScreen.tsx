@@ -320,6 +320,9 @@ const styles = StyleSheet.create({
     borderRadius: radius.xl,
     padding: spacing['2xl'],
     gap: spacing.xl,
+    maxWidth: 480,
+    width: '100%',
+    alignSelf: 'center',
   },
 
   // ── Form Fields
@@ -365,7 +368,7 @@ const styles = StyleSheet.create({
   },
   resetButtonText: {
     ...textStyle.button,
-    color: '#FFFFFF',
+    color: text.primary,
   },
 
   // ── Success Card

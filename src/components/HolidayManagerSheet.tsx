@@ -1,12 +1,13 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, Modal, TouchableOpacity, TextInput, ActivityIndicator, Alert, ScrollView, Platform } from 'react-native';
+import { useState, useEffect } from 'react';
+import {  View, Text, StyleSheet, Modal, TouchableOpacity, TextInput, ActivityIndicator, Alert, ScrollView, Platform , useWindowDimensions, KeyboardAvoidingView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { canvas, text as textColors, accent, glass, border, shadow } from '../theme/colors';
-import { fontFamily, fontSize, textStyle } from '../theme/typography';
+import { canvas, text as textColors, accent, glass, border, shadow, palette } from '../theme/colors';
+import { fontFamily, fontSize } from '../theme/typography';
 import { spacing, radius } from '../theme/spacing';
 import { DatabaseService } from '../services/DatabaseService';
 import { supabase } from '../lib/supabase';
+import { LogbookService } from '../services/LogbookService';
 import { Database } from '../lib/database.types';
 
 type Holiday = Database['public']['Tables']['holidays']['Row'];
@@ -19,13 +20,40 @@ interface HolidayManagerSheetProps {
 }
 
 export default function HolidayManagerSheet({ visible, semesterId, onClose, onRefresh }: HolidayManagerSheetProps) {
-  const [activeTab, setActiveTab] = useState<'add' | 'list'>('add');
+  const { height } = useWindowDimensions();
+  const [activeTab, setActiveTab] = useState<'list' | 'add'>('list');
   const [holidays, setHolidays] = useState<Holiday[]>([]);
   const [editingHoliday, setEditingHoliday] = useState<Holiday | null>(null);
   
   const [title, setTitle] = useState('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
+
+  const formatDateInput = (text: string, prevText: string) => {
+    if (text.length < prevText.length) return text;
+    const cleaned = text.replace(/\D/g, '');
+    let year = cleaned.slice(0, 4);
+    let month = cleaned.slice(4, 6);
+    let day = cleaned.slice(6, 8);
+
+    if (month.length === 2 && parseInt(month, 10) > 12) month = '12';
+    if (day.length === 2 && parseInt(day, 10) > 31) day = '31';
+
+    if (cleaned.length >= 7) {
+      return `${year}/${month}/${day}`;
+    } else if (cleaned.length >= 5) {
+      return `${year}/${month}`;
+    } else if (cleaned.length === 4 && text.length === 4) {
+      return `${year}/`;
+    } else if (cleaned.length === 6 && text.length === 7) {
+      return `${year}/${month}/`;
+    }
+    return cleaned;
+  };
+
+  const handleStartDateChange = (text: string) => setStartDate(formatDateInput(text, startDate));
+  const handleEndDateChange = (text: string) => setEndDate(formatDateInput(text, endDate));
+
   const [loading, setLoading] = useState(false);
   const [fetching, setFetching] = useState(false);
 
@@ -60,8 +88,8 @@ export default function HolidayManagerSheet({ visible, semesterId, onClose, onRe
   const handleEditClick = (holiday: Holiday) => {
     setEditingHoliday(holiday);
     setTitle(holiday.title);
-    setStartDate(holiday.date);
-    setEndDate(holiday.date); // For edits we only edit a single date
+    setStartDate(holiday.date.replace(/-/g, '/'));
+    setEndDate(holiday.date.replace(/-/g, '/'));
     setActiveTab('add');
   };
 
@@ -95,7 +123,7 @@ export default function HolidayManagerSheet({ visible, semesterId, onClose, onRe
 
   const handleSave = async () => {
     if (!title.trim() || !startDate.trim() || (!editingHoliday && !endDate.trim())) {
-      Alert.alert('Error', 'Please fill in all date fields (YYYY-MM-DD)');
+      Alert.alert('Error', 'Please fill in all date fields (YYYY/MM/DD)');
       return;
     }
     if (!semesterId) {
@@ -112,28 +140,38 @@ export default function HolidayManagerSheet({ visible, semesterId, onClose, onRe
         // Edit mode (single date updates)
         await DatabaseService.updateHoliday(editingHoliday.id, {
           title: title.trim(),
-          date: startDate.trim()
+          date: startDate.replace(/\//g, '-').trim()
         });
       } else {
         // Add mode (allows date ranges)
-        const start = new Date(startDate);
-        const end = new Date(endDate);
-        const inserts = [];
+        const start = new Date(startDate.replace(/\//g, '-'));
+        const end = endDate ? new Date(endDate.replace(/\//g, '-')) : start;
         
-        for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+        if (start > end) {
+          Alert.alert('Error', 'End date must be after start date');
+          setLoading(false);
+          return;
+        }
+
+        const inserts = [];
+        const current = new Date(start);
+        
+        while (current <= end) {
           inserts.push({
             user_id: user.id,
             semester_id: semesterId,
-            date: d.toLocaleDateString('en-CA'),
+            date: current.toISOString().split('T')[0],
             title: title.trim(),
             type: 'holiday' as const
           });
+          current.setDate(current.getDate() + 1);
         }
 
-        // Insert using DatabaseService helper
-        for (const item of inserts) {
-          await DatabaseService.createHoliday(item);
-        }
+        // Insert using bulk Supabase operation
+        const { error } = await supabase.from('holidays').insert(inserts);
+        if (error) throw error;
+        
+        await LogbookService.addLog('create', 'holiday', `Marked ${inserts.length} holidays: ${title.trim()}`);
       }
 
       resetForm();
@@ -155,19 +193,19 @@ export default function HolidayManagerSheet({ visible, semesterId, onClose, onRe
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <View style={styles.overlay}>
-        <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={onClose} />
+        <TouchableOpacity hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} accessibilityRole="button" style={styles.backdrop} activeOpacity={1} onPress={onClose} />
         
         <View style={styles.sheet}>
           <View style={styles.header}>
             <Text style={styles.title}>{editingHoliday ? 'Edit Holiday' : 'Mark Holiday'}</Text>
-            <TouchableOpacity onPress={onClose} style={styles.closeButton}>
+            <TouchableOpacity hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} accessibilityRole="button" onPress={onClose} style={styles.closeButton}>
               <Ionicons name="close" size={20} color={textColors.secondary} />
             </TouchableOpacity>
           </View>
 
           {/* Premium Segmented Tabs */}
           <View style={styles.tabRow}>
-            <TouchableOpacity 
+            <TouchableOpacity hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} accessibilityRole="button" 
               style={[styles.tabBtn, activeTab === 'add' && styles.tabBtnActive]} 
               onPress={() => setActiveTab('add')}
             >
@@ -175,7 +213,7 @@ export default function HolidayManagerSheet({ visible, semesterId, onClose, onRe
                 {editingHoliday ? 'Edit Exemption' : 'Add Exemption'}
               </Text>
             </TouchableOpacity>
-            <TouchableOpacity 
+            <TouchableOpacity hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} accessibilityRole="button" 
               style={[styles.tabBtn, activeTab === 'list' && styles.tabBtnActive]} 
               onPress={() => setActiveTab('list')}
             >
@@ -185,8 +223,13 @@ export default function HolidayManagerSheet({ visible, semesterId, onClose, onRe
             </TouchableOpacity>
           </View>
 
+          <KeyboardAvoidingView behavior="padding" style={{ width: '100%' }}>
           {activeTab === 'add' ? (
-            <View>
+            <ScrollView 
+              style={{ flexShrink: 1, maxHeight: height * 0.7 }} 
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+            >
               <Text style={styles.subtitle}>Exclude dates from attendance calculations (e.g. Festivals, Exam weeks, or class cancellations).</Text>
 
               <View style={styles.formGroup}>
@@ -202,13 +245,15 @@ export default function HolidayManagerSheet({ visible, semesterId, onClose, onRe
 
               <View style={styles.dateInputsRow}>
                 <View style={[styles.formGroup, { flex: 1 }]}>
-                  <Text style={styles.label}>{editingHoliday ? 'Date (YYYY-MM-DD)' : 'Start Date'}</Text>
+                  <Text style={styles.label}>{editingHoliday ? 'Date (YYYY/MM/DD)' : 'Start Date'}</Text>
                   <TextInput
                     style={styles.input}
-                    placeholder="2026-10-24"
+                    placeholder="YYYY/MM/DD"
                     placeholderTextColor={textColors.tertiary}
                     value={startDate}
-                    onChangeText={setStartDate}
+                    onChangeText={handleStartDateChange}
+                    maxLength={10}
+                    keyboardType="numeric"
                   />
                 </View>
                 
@@ -217,10 +262,12 @@ export default function HolidayManagerSheet({ visible, semesterId, onClose, onRe
                     <Text style={styles.label}>End Date</Text>
                     <TextInput
                       style={styles.input}
-                      placeholder="2026-10-28"
+                      placeholder="YYYY/MM/DD"
                       placeholderTextColor={textColors.tertiary}
                       value={endDate}
-                      onChangeText={setEndDate}
+                      onChangeText={handleEndDateChange}
+                      maxLength={10}
+                      keyboardType="numeric"
                     />
                   </View>
                 )}
@@ -228,20 +275,20 @@ export default function HolidayManagerSheet({ visible, semesterId, onClose, onRe
 
               <View style={styles.actionRow}>
                 {editingHoliday && (
-                  <TouchableOpacity style={styles.cancelEditBtn} onPress={resetForm}>
+                  <TouchableOpacity hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} accessibilityRole="button" style={styles.cancelEditBtn} onPress={resetForm}>
                     <Text style={styles.cancelEditText}>Cancel Edit</Text>
                   </TouchableOpacity>
                 )}
                 
-                <TouchableOpacity style={styles.saveButton} onPress={handleSave} disabled={loading}>
+                <TouchableOpacity hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} accessibilityRole="button" style={styles.saveButton} onPress={handleSave} disabled={loading}>
                   <LinearGradient colors={[accent.primary, accent.primaryHover]} style={styles.saveGradient}>
-                    {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveText}>{editingHoliday ? 'Save Changes' : 'Save Exemption'}</Text>}
+                    {loading ? <ActivityIndicator color={palette.white} /> : <Text style={styles.saveText}>{editingHoliday ? 'Save Changes' : 'Save Exemption'}</Text>}
                   </LinearGradient>
                 </TouchableOpacity>
               </View>
-            </View>
+            </ScrollView>
           ) : (
-            <ScrollView style={styles.listScroll} showsVerticalScrollIndicator={false}>
+            <ScrollView style={[styles.listScroll, { maxHeight: height * 0.7, flexShrink: 1 }]} showsVerticalScrollIndicator={false}>
               {fetching ? (
                 <ActivityIndicator color={accent.primary} style={{ marginTop: spacing.xl }} />
               ) : holidays.length > 0 ? (
@@ -252,11 +299,11 @@ export default function HolidayManagerSheet({ visible, semesterId, onClose, onRe
                       <Text style={styles.holidayDateText}>{h.date}</Text>
                     </View>
                     <View style={styles.itemActions}>
-                      <TouchableOpacity onPress={() => handleEditClick(h)} style={styles.iconBtn}>
+                      <TouchableOpacity hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} accessibilityRole="button" onPress={() => handleEditClick(h)} style={styles.iconBtn}>
                         <Ionicons name="pencil" size={16} color={accent.primary} />
                       </TouchableOpacity>
-                      <TouchableOpacity onPress={() => handleDeleteClick(h)} style={styles.iconBtn}>
-                        <Ionicons name="trash" size={16} color="#DC2626" />
+                      <TouchableOpacity hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} accessibilityRole="button" onPress={() => handleDeleteClick(h)} style={styles.iconBtn}>
+                        <Ionicons name="trash" size={16} color={palette.red[600]} />
                       </TouchableOpacity>
                     </View>
                   </View>
@@ -266,6 +313,7 @@ export default function HolidayManagerSheet({ visible, semesterId, onClose, onRe
               )}
             </ScrollView>
           )}
+          </KeyboardAvoidingView>
         </View>
       </View>
     </Modal>
@@ -283,7 +331,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(6, 9, 18, 0.85)',
   },
   sheet: {
-    backgroundColor: glass.strong,
+    backgroundColor: canvas.elevated,
     width: '100%',
     maxWidth: Platform.OS === 'web' ? 440 : '100%',
     borderTopLeftRadius: Platform.OS === 'web' ? radius['2xl'] : radius['3xl'],
@@ -397,7 +445,7 @@ const styles = StyleSheet.create({
   saveText: {
     fontFamily: fontFamily.bold,
     fontSize: fontSize.base,
-    color: '#fff',
+    color: palette.white,
     letterSpacing: 0.5,
   },
   cancelEditBtn: {
@@ -414,7 +462,6 @@ const styles = StyleSheet.create({
     color: textColors.secondary,
   },
   listScroll: {
-    maxHeight: 280,
   },
   holidayItem: {
     flexDirection: 'row',

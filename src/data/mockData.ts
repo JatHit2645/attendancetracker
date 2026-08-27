@@ -49,6 +49,8 @@ export interface TodayScheduleItem {
   status: 'upcoming' | 'ongoing' | 'completed' | 'cancelled';
   attendanceStatus?: 'present' | 'absent' | 'cancelled' | 'missed';
   color: string;
+  teacher?: string;
+  classType?: string;
 }
 
 export interface DashboardStats {
@@ -62,142 +64,8 @@ export interface DashboardStats {
 }
 
 // ─── Subject Colors (Curated, non-generic) ─────────────────────────
-const subjectColors = {
-  indigo: '#6366F1',
-  emerald: '#10B981',
-  rose: '#F43F5E',
-  amber: '#F59E0B',
-  cyan: '#22D3EE',
-  violet: '#8B5CF6',
-  orange: '#F97316',
-  teal: '#14B8A6',
-};
 
-// ─── Mock Subjects ─────────────────────────────────────────────────
-export const mockSubjects: Subject[] = [
-  {
-    id: 'sub-001',
-    name: 'Data Structures & Algorithms',
-    shortName: 'DSA',
-    totalConducted: 42,
-    totalAttended: 38,
-    totalCancelled: 2,
-    threshold: 75,
-    color: subjectColors.indigo,
-    isActive: true,
-  },
-  {
-    id: 'sub-002',
-    name: 'Operating Systems',
-    shortName: 'OS',
-    totalConducted: 38,
-    totalAttended: 30,
-    totalCancelled: 1,
-    threshold: 75,
-    color: subjectColors.emerald,
-    isActive: true,
-  },
-  {
-    id: 'sub-003',
-    name: 'Database Management Systems',
-    shortName: 'DBMS',
-    totalConducted: 35,
-    totalAttended: 33,
-    totalCancelled: 3,
-    threshold: 75,
-    color: subjectColors.cyan,
-    isActive: true,
-  },
-  {
-    id: 'sub-004',
-    name: 'Computer Networks',
-    shortName: 'CN',
-    totalConducted: 40,
-    totalAttended: 28,
-    totalCancelled: 0,
-    threshold: 75,
-    color: subjectColors.rose,
-    isActive: true,
-  },
-  {
-    id: 'sub-005',
-    name: 'Mathematics III',
-    shortName: 'M3',
-    totalConducted: 36,
-    totalAttended: 34,
-    totalCancelled: 1,
-    threshold: 75,
-    color: subjectColors.amber,
-    isActive: true,
-  },
-  {
-    id: 'sub-006',
-    name: 'Physics Laboratory',
-    shortName: 'PHY LAB',
-    totalConducted: 12,
-    totalAttended: 11,
-    totalCancelled: 0,
-    threshold: 85,
-    color: subjectColors.violet,
-    isActive: true,
-  },
-];
 
-// ─── Today's Schedule ──────────────────────────────────────────────
-export const mockTodaySchedule: TodayScheduleItem[] = [
-  {
-    id: 'sch-001',
-    subjectId: 'sub-001',
-    subjectName: 'Data Structures & Algorithms',
-    subjectShortName: 'DSA',
-    startTime: '09:00',
-    endTime: '10:00',
-    status: 'completed',
-    attendanceStatus: 'present',
-    color: subjectColors.indigo,
-  },
-  {
-    id: 'sch-002',
-    subjectId: 'sub-002',
-    subjectName: 'Operating Systems',
-    subjectShortName: 'OS',
-    startTime: '10:15',
-    endTime: '11:15',
-    status: 'completed',
-    attendanceStatus: 'present',
-    color: subjectColors.emerald,
-  },
-  {
-    id: 'sch-003',
-    subjectId: 'sub-004',
-    subjectName: 'Computer Networks',
-    subjectShortName: 'CN',
-    startTime: '11:30',
-    endTime: '12:30',
-    status: 'ongoing',
-    color: subjectColors.rose,
-  },
-  {
-    id: 'sch-004',
-    subjectId: 'sub-003',
-    subjectName: 'Database Management Systems',
-    subjectShortName: 'DBMS',
-    startTime: '14:00',
-    endTime: '15:00',
-    status: 'upcoming',
-    color: subjectColors.cyan,
-  },
-  {
-    id: 'sch-005',
-    subjectId: 'sub-005',
-    subjectName: 'Mathematics III',
-    subjectShortName: 'M3',
-    startTime: '15:15',
-    endTime: '16:15',
-    status: 'upcoming',
-    color: subjectColors.amber,
-  },
-];
 
 // ─── Utility Functions (PRD: Dynamic Calculations) ──────────────────
 

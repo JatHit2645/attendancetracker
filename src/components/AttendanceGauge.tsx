@@ -1,8 +1,8 @@
-import { useEffect, useRef, useState } from 'react';
-import { View, Animated, StyleSheet, Platform, TextInput } from 'react-native';
+import React, { useEffect, useRef } from 'react';
+import { View, Animated, StyleSheet, Platform, TextInput, Text } from 'react-native';
 import Svg, { Circle, Defs, LinearGradient as SvgGradient, Stop } from 'react-native-svg';
-import { gauge, shadow, text } from '../theme/colors';
-import { textStyle, fontFamily } from '../theme/typography';
+import { gauge, text } from '../theme/colors';
+import { textStyle } from '../theme/typography';
 
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 
@@ -25,7 +25,7 @@ function getGaugeColor(percentage: number, threshold: number): string {
   return gauge.critical;
 }
 
-export default function AttendanceGauge({
+export default React.memo(function AttendanceGauge({
   percentage,
   threshold = 75,
   size = 180,
@@ -37,7 +37,8 @@ export default function AttendanceGauge({
   label,
 }: AttendanceGaugeProps) {
   const animatedValue = useRef(new Animated.Value(0)).current;
-  const [displayValue, setDisplayValue] = useState(0);
+  const inputRef = useRef<TextInput>(null);
+  const webPathRef = useRef<any>(null);
 
   const safePercentage = (percentage == null || isNaN(percentage)) ? 0 : percentage;
   const clampedPercentage = Math.min(100, Math.max(0, safePercentage));
@@ -51,15 +52,33 @@ export default function AttendanceGauge({
   useEffect(() => {
     let lastUpdate = Date.now();
     const listenerId = animatedValue.addListener(({ value }) => {
-      // Throttle web re-renders to ~15fps (every 66ms) to fix CPU issue
+      const rounded = Math.round(value);
+      
+      // Throttle Web updates
       if (Platform.OS === 'web') {
         const now = Date.now();
-        if (now - lastUpdate > 66 || value === clampedPercentage) {
-          setDisplayValue(Math.round(value));
+        if (now - lastUpdate > 33 || value === clampedPercentage) {
+          if (inputRef.current) {
+            if (typeof inputRef.current.setNativeProps === 'function') {
+              inputRef.current.setNativeProps({ text: `${rounded}%` });
+            } else {
+              (inputRef.current as any).value = `${rounded}%`;
+            }
+          }
+          if (webPathRef.current) {
+            const dash = circumference - (value / 100) * circumference;
+            if (typeof webPathRef.current.setNativeProps === 'function') {
+              webPathRef.current.setNativeProps({ strokeDashoffset: dash });
+            } else if (typeof webPathRef.current.setAttribute === 'function') {
+              webPathRef.current.setAttribute('stroke-dashoffset', dash.toString());
+            }
+          }
           lastUpdate = now;
         }
       } else {
-        setDisplayValue(Math.round(value));
+        if (inputRef.current && typeof inputRef.current.setNativeProps === 'function') {
+          inputRef.current.setNativeProps({ text: `${rounded}%` });
+        }
       }
     });
 
@@ -85,17 +104,53 @@ export default function AttendanceGauge({
     extrapolate: 'clamp',
   });
 
-  const webDashoffset = circumference - (displayValue / 100) * circumference;
+  const initialDisplayValue = Math.round(clampedPercentage);
+  const initialWebDashoffset = circumference - (initialDisplayValue / 100) * circumference;
 
   return (
     <View 
-      style={[styles.container, { width: size, height: size, borderRadius: size / 2, backgroundColor: 'transparent' }, shadow.glow(ringColor)]}
+      style={[styles.container, { width: size, height: size }]}
       accessible={true}
       accessibilityRole="progressbar"
-      accessibilityLabel={`Attendance is ${displayValue}%`}
-      accessibilityValue={{ min: 0, max: 100, now: displayValue }}
+      accessibilityLabel={`Attendance is ${initialDisplayValue}%`}
     >
-      <Svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+      {/* Outer glow ring using native View for perfect circular rendering on Android */}
+      <View
+        style={{
+          position: 'absolute',
+          width: size,
+          height: size,
+          borderRadius: size / 2,
+          borderWidth: strokeWidth + 8,
+          borderColor: ringColor,
+          opacity: 0.15,
+        }}
+      />
+
+      {/* Base track circle using native View for perfect circle */}
+      <View
+        style={{
+          position: 'absolute',
+          width: size,
+          height: size,
+          borderRadius: size / 2,
+          borderWidth: strokeWidth,
+          borderColor: gauge.track,
+        }}
+      />
+
+      {/* Inner solid circular background using native View */}
+      <View
+        style={{
+          position: 'absolute',
+          width: size - strokeWidth * 2,
+          height: size - strokeWidth * 2,
+          borderRadius: (size - strokeWidth * 2) / 2,
+          backgroundColor: '#12131C',
+        }}
+      />
+
+      <Svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ position: 'absolute' }}>
         <Defs>
           <SvgGradient id="gaugeGradient" x1="0%" y1="0%" x2="100%" y2="100%">
             <Stop offset="0%" stopColor={ringColor} stopOpacity="1" />
@@ -103,29 +158,22 @@ export default function AttendanceGauge({
           </SvgGradient>
         </Defs>
 
-        <Circle
-          cx={halfSize}
-          cy={halfSize}
-          r={radius}
-          stroke={gauge.track}
-          strokeWidth={strokeWidth}
-          fill="none"
-        />
-
         {Platform.OS === 'web' ? (
-          <Circle
+          <circle
+            ref={webPathRef}
             cx={halfSize}
             cy={halfSize}
             r={radius}
-            stroke="url(#gaugeGradient)"
+            stroke={ringColor}
             strokeWidth={strokeWidth}
-            fill="none"
-            strokeDasharray={`${circumference} ${circumference}`}
-            strokeDashoffset={webDashoffset}
+            fill="transparent"
+            strokeDasharray={circumference}
+            strokeDashoffset={initialWebDashoffset}
             strokeLinecap="round"
-            rotation="-90"
-            originX={halfSize}
-            originY={halfSize}
+            style={{
+              transformOrigin: '50% 50%',
+              transform: 'rotate(-90deg)',
+            } as any}
           />
         ) : (
           <AnimatedCircle
@@ -148,33 +196,61 @@ export default function AttendanceGauge({
         <View style={styles.content}>{children}</View>
       ) : label ? (
         <View style={styles.content}>
-          <Animated.Text style={[
-            textStyle.displayNumber, 
-            { 
-              color: text.primary, 
-              fontSize: size * 0.22, 
-              lineHeight: size * 0.28, 
-              textAlign: 'center',
-              fontWeight: '800'
-            }
-          ]}>
-            {displayValue}%
-          </Animated.Text>
-          <Animated.Text style={[
+          <TextInput
+            ref={inputRef}
+            underlineColorAndroid="transparent"
+            editable={false}
+            style={[
+              textStyle.displayNumber, 
+              { 
+                color: text.primary, 
+                fontSize: size * 0.22, 
+                lineHeight: size * 0.28, 
+                textAlign: 'center',
+                fontWeight: '800',
+                padding: 0,
+                margin: 0,
+              }
+            ]}
+            defaultValue={`${initialDisplayValue}%`}
+          />
+          <Text style={[
             textStyle.label, 
             { 
               marginTop: 4, 
               color: text.secondary, 
-              fontSize: Math.max(9, size * 0.05) 
+              fontSize: Math.max(9, size * 0.05),
+              textAlign: 'center'
             }
           ]}>
             {label}
-          </Animated.Text>
+          </Text>
         </View>
-      ) : null}
+      ) : (
+        <View style={styles.content}>
+          <TextInput
+            ref={inputRef}
+            underlineColorAndroid="transparent"
+            editable={false}
+            style={[
+              textStyle.displayNumber, 
+              { 
+                color: text.primary, 
+                fontSize: size * 0.22, 
+                lineHeight: size * 0.28, 
+                textAlign: 'center',
+                fontWeight: '800',
+                padding: 0,
+                margin: 0,
+              }
+            ]}
+            defaultValue={`${initialDisplayValue}%`}
+          />
+        </View>
+      )}
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   container: {

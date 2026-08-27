@@ -6,7 +6,8 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
-    "scheme": "attendance-tracker",
+    "scheme": "attendance",
+
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.attendancetracker.app"
@@ -39,7 +40,18 @@
     },
     "plugins": [
       "expo-font",
-      "expo-splash-screen",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/icon.png",
+          "resizeMode": "contain",
+          "backgroundColor": "#0C111C",
+          "dark": {
+            "image": "./assets/icon.png",
+            "backgroundColor": "#0C111C"
+          }
+        }
+      ],
       "expo-sharing",
       "expo-updates"
     ],

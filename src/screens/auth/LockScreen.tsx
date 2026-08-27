@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity, TextInput, ActivityIndicator,
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { canvas, text as textColors, accent, glass, border, shadow } from '../../theme/colors';
-import { fontFamily, fontSize, textStyle } from '../../theme/typography';
+import { fontFamily, fontSize } from '../../theme/typography';
 import { spacing, radius } from '../../theme/spacing';
 import { SecurityService } from '../../services/SecurityService';
 import { supabase } from '../../lib/supabase';
@@ -94,7 +94,7 @@ export default function LockScreen({ onUnlock, onLogout }: LockScreenProps) {
         {!showOtp ? (
           <TouchableOpacity style={styles.primaryButton} onPress={triggerBiometrics}>
             <LinearGradient colors={[accent.primary, accent.primaryHover]} style={styles.buttonGradient}>
-              <Ionicons name="finger-print" size={24} color="#fff" />
+              <Ionicons name="finger-print" size={24} color={textColors.primary} />
               <Text style={styles.buttonText}>Unlock with Biometrics</Text>
             </LinearGradient>
           </TouchableOpacity>
@@ -103,7 +103,7 @@ export default function LockScreen({ onUnlock, onLogout }: LockScreenProps) {
             {!otpSent ? (
               <TouchableOpacity style={styles.primaryButton} onPress={handleSendOtp} disabled={loading}>
                 <LinearGradient colors={[glass.medium, glass.heavy]} style={styles.buttonGradient}>
-                  {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Send OTP via Email</Text>}
+                  {loading ? <ActivityIndicator color={textColors.primary} /> : <Text style={styles.buttonText}>Send OTP via Email</Text>}
                 </LinearGradient>
               </TouchableOpacity>
             ) : (
@@ -119,7 +119,7 @@ export default function LockScreen({ onUnlock, onLogout }: LockScreenProps) {
                 />
                 <TouchableOpacity style={styles.primaryButton} onPress={handleVerifyOtp} disabled={loading}>
                   <LinearGradient colors={[accent.primary, accent.primaryHover]} style={styles.buttonGradient}>
-                    {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Verify OTP</Text>}
+                    {loading ? <ActivityIndicator color={textColors.primary} /> : <Text style={styles.buttonText}>Verify OTP</Text>}
                   </LinearGradient>
                 </TouchableOpacity>
               </View>
@@ -150,6 +150,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: border.default,
     ...shadow.medium,
+    maxWidth: 480,
+    width: '100%',
+    alignSelf: 'center',
   },
   iconContainer: {
     width: 80,
@@ -191,7 +194,7 @@ const styles = StyleSheet.create({
   buttonText: {
     fontFamily: fontFamily.bold,
     fontSize: fontSize.base,
-    color: '#fff',
+    color: textColors.primary,
   },
   otpContainer: {
     width: '100%',

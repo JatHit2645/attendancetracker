@@ -1,6 +1,6 @@
 /**
  * Attendance Tracker — Analytics & History Screen (Phase 4)
- * 
+ *
  * Displays historical attendance logs, a monthly calendar view, and trend graphs.
  * Features:
  * - Dynamic Selector Dropdown for time periods (Months & Semesters).
@@ -10,13 +10,22 @@
  * - Export functions for CSV and PDF on mobile.
  */
 
-import React, { useState, useMemo, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, Platform, TouchableOpacity, Modal } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
-import * as FileSystem from 'expo-file-system';
-import * as Sharing from 'expo-sharing';
-import * as Print from 'expo-print';
+import { useState, useMemo, useEffect } from "react";
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  Platform,
+  TouchableOpacity,
+  Modal,
+  DeviceEventEmitter,
+} from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import { LinearGradient } from "expo-linear-gradient";
+import * as FileSystem from "expo-file-system";
+import * as Sharing from "expo-sharing";
+import * as Print from "expo-print";
 import {
   canvas,
   glass,
@@ -26,16 +35,18 @@ import {
   shadow,
   attendance as attendanceColors,
   gauge as gaugeColors,
-} from '../../theme/colors';
-import { fontFamily, fontSize, textStyle } from '../../theme/typography';
-import { spacing, radius, layout } from '../../theme/spacing';
-import { DatabaseService } from '../../services/DatabaseService';
-import { Database } from '../../lib/database.types';
-import { supabase } from '../../lib/supabase';
-import HolidayManagerSheet from '../../components/HolidayManagerSheet';
+  heat,
+  palette,
+} from "../../theme/colors";
+import { fontFamily, fontSize, textStyle } from "../../theme/typography";
+import { spacing, radius, layout } from "../../theme/spacing";
+import { DatabaseService } from "../../services/DatabaseService";
+import { Database } from "../../lib/database.types";
+import { supabase } from "../../lib/supabase";
+import HolidayManagerSheet from "../../components/HolidayManagerSheet";
 
-type SubjectRow = Database['public']['Tables']['subjects']['Row'];
-type RecordRow = Database['public']['Tables']['attendance_records']['Row'];
+type SubjectRow = Database["public"]["Tables"]["subjects"]["Row"];
+type RecordRow = Database["public"]["Tables"]["attendance_records"]["Row"];
 
 const calculatePercentage = (attended: number, conducted: number) => {
   if (conducted === 0) return 0;
@@ -46,7 +57,7 @@ const calculatePercentage = (attended: number, conducted: number) => {
 interface TimePeriod {
   id: string;
   label: string;
-  type: 'month' | 'semester';
+  type: "month" | "semester";
   year: number;
   monthIndex?: number; // 0-11
   startMonthIndex?: number;
@@ -60,7 +71,12 @@ interface CalendarDay {
 }
 
 // ── Helper to build month matrix ──
-const getCalendarMatrix = (year: number, monthIndex: number, allRecords: RecordRow[], holidays: any[]): CalendarDay[] => {
+const getCalendarMatrix = (
+  year: number,
+  monthIndex: number,
+  allRecords: RecordRow[],
+  holidays: any[],
+): CalendarDay[] => {
   const matrix: CalendarDay[] = [];
   const firstDay = new Date(year, monthIndex, 1);
   const startDayOfWeek = firstDay.getDay(); // 0=Sun, 1=Mon, etc.
@@ -77,17 +93,22 @@ const getCalendarMatrix = (year: number, monthIndex: number, allRecords: RecordR
     const dayOfWeek = currentDate.getDay();
     const isWeekend = dayOfWeek === 0; // Only Sunday is weekend by default
 
-    const dateStr = `${year}-${(monthIndex + 1).toString().padStart(2, '0')}-${d.toString().padStart(2, '0')}`;
-    const dayRecords = allRecords.filter(r => r.date === dateStr);
+    const dateStr = `${year}-${(monthIndex + 1).toString().padStart(2, "0")}-${d.toString().padStart(2, "0")}`;
+    const dayRecords = allRecords.filter((r) => r.date === dateStr);
 
     let ratio = -1; // Holiday/Weekend (Off)
-    const isHoliday = holidays.some(h => h.date && h.date.startsWith(dateStr));
-    
+    const isHoliday = holidays.some(
+      (h) => h.date && h.date.startsWith(dateStr),
+    );
+
     if (isHoliday) {
       ratio = -3; // Holiday
-    } else if (dayRecords.length > 0) {
-      const presentCount = dayRecords.filter(r => r.status === 'present').length;
-      ratio = presentCount / dayRecords.length;
+    } else if (dayRecords.filter((r) => r.status !== "cancelled").length > 0) {
+      const activeRecords = dayRecords.filter((r) => r.status !== "cancelled");
+      const presentCount = activeRecords.filter(
+        (r) => r.status === "present",
+      ).length;
+      ratio = presentCount / activeRecords.length;
     } else if (!isWeekend) {
       ratio = -1;
     }
@@ -116,7 +137,7 @@ const chunkArray = (arr: any[], size: number) => {
   return chunks;
 };
 
-export default function AnalyticsScreen() {
+export default function AnalyticsScreen({ isActive = true }: { isActive?: boolean }) {
   const [periods, setPeriods] = useState<TimePeriod[]>([]);
   const [selectedPeriod, setSelectedPeriod] = useState<TimePeriod | null>(null);
   const [dropdownVisible, setDropdownVisible] = useState(false);
@@ -125,98 +146,139 @@ export default function AnalyticsScreen() {
   const [subjects, setSubjects] = useState<SubjectRow[]>([]);
   const [records, setRecords] = useState<RecordRow[]>([]);
   const [holidays, setHolidays] = useState<any[]>([]);
-  const [activeSemesterId, setActiveSemesterId] = useState<string | null>(null);
-  const [holidaySheetVisible, setHolidaySheetVisible] = useState(false);
+    const [holidaySheetVisible, setHolidaySheetVisible] = useState(false);
 
   const loadData = async () => {
     try {
-      const activeSem = await DatabaseService.fetchActiveSemester();
-      if (!activeSem) return;
-      setActiveSemesterId(activeSem.id);
+      const allSemesters = await DatabaseService.fetchSemesters();
+      if (!allSemesters || allSemesters.length === 0) return;
 
       const [fetchedSubjects, fetchedRecords] = await Promise.all([
-        DatabaseService.fetchSubjects(activeSem.id),
-        DatabaseService.fetchAttendanceRecords(activeSem.id)
+        DatabaseService.fetchSubjects(),
+        DatabaseService.fetchAttendanceRecords(),
       ]);
-      const { data: holidaysData } = await (supabase as any).from('holidays').select('*').eq('semester_id', activeSem.id);
-      
+      const { data: holidaysData } = await (supabase as any)
+        .from("holidays")
+        .select("*");
+
       setSubjects(fetchedSubjects);
       setRecords(fetchedRecords);
       setHolidays(holidaysData || []);
-      
-      // Generate periods based on active semester
-      const semStart = new Date(activeSem.start_date);
-      const semEnd = activeSem.end_date ? new Date(activeSem.end_date) : new Date();
-      
+
       const newPeriods: TimePeriod[] = [];
-      const startYear = semStart.getFullYear();
-      const endYear = semEnd.getFullYear();
-      
-      // Add the entire semester option first
-      newPeriods.push({
-        id: `sem_${activeSem.id}`,
-        label: `${activeSem.name} (Full)`,
-        type: 'semester',
-        year: startYear, // Approximate
-        startMonthIndex: semStart.getMonth(),
-        endMonthIndex: (endYear > startYear ? 11 : semEnd.getMonth()), // simplistic if spans multiple years
+
+      // Add all semesters
+      allSemesters.forEach((sem) => {
+        const semStart = new Date(sem.start_date);
+        const semEnd = sem.end_date ? new Date(sem.end_date) : new Date();
+        newPeriods.push({
+          id: `sem_${sem.id}`,
+          label: `${sem.name} (Full)`,
+          type: "semester",
+          year: semStart.getFullYear(),
+          startMonthIndex: semStart.getMonth(),
+          endMonthIndex: semEnd.getFullYear() > semStart.getFullYear() ? 11 : semEnd.getMonth(),
+        });
       });
-      
-      // Add individual months (reverse order so recent is first)
-      let curr = new Date(semEnd);
-      while (curr >= semStart) {
+
+      // Add months starting from July 2026 to current date
+      const startMonthDate = new Date(2026, 6, 1); // July 2026 (Month is 0-indexed)
+      let curr = new Date();
+      if (curr < startMonthDate) {
+        curr = new Date(startMonthDate);
+      }
+
+      while (curr >= startMonthDate) {
         newPeriods.push({
           id: `m_${curr.getFullYear()}_${curr.getMonth()}`,
-          label: curr.toLocaleString('default', { month: 'long', year: 'numeric' }),
-          type: 'month',
+          label: curr.toLocaleString("default", {
+            month: "long",
+            year: "numeric",
+          }),
+          type: "month",
           year: curr.getFullYear(),
           monthIndex: curr.getMonth(),
         });
-        curr.setMonth(curr.getMonth() - 1);
+        curr = new Date(curr.getFullYear(), curr.getMonth() - 1, 1);
       }
-      
+
       setPeriods(newPeriods);
-      if (!selectedPeriod) {
-        setSelectedPeriod(newPeriods[0]);
+      const activeSem = allSemesters.find(s => s.is_active);
+      if (!selectedPeriod || (selectedPeriod.type === 'semester' && activeSem && selectedPeriod.id !== `sem_${activeSem.id}`)) {
+        const defaultPeriod = newPeriods.find(p => activeSem && p.id === `sem_${activeSem.id}`) || newPeriods[0];
+        setSelectedPeriod(defaultPeriod);
       }
-      
     } catch (error) {
-      console.warn('Failed to load analytics data', error);
+      console.warn("Failed to load analytics data", error);
     }
   };
 
   useEffect(() => {
+    if (!isActive) return;
     loadData();
 
     // Realtime changes listener for automatic updates
     const recordsChannel = supabase
-      .channel('public:attendance_records_analytics')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'attendance_records' }, payload => {
-        loadData();
-      })
+      .channel("public:attendance_records_analytics")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "attendance_records" },
+        (_payload) => {
+          loadData();
+        },
+      )
       .subscribe();
 
     const holidaysChannel = supabase
-      .channel('public:holidays_analytics')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'holidays' }, payload => {
-        loadData();
-      })
+      .channel("public:holidays_analytics")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "holidays" },
+        (_payload) => {
+          loadData();
+        },
+      )
+      .subscribe();
+
+    const semestersChannel = supabase
+      .channel("public:academic_semesters_analytics")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "academic_semesters" },
+        (_payload) => {
+          loadData();
+        },
+      )
       .subscribe();
 
     return () => {
       supabase.removeChannel(recordsChannel);
       supabase.removeChannel(holidaysChannel);
+      supabase.removeChannel(semestersChannel);
     };
+  }, [isActive]);
+
+  useEffect(() => {
+    const sub = DeviceEventEmitter.addListener("semesterChanged", () => {
+      loadData();
+    });
+    return () => sub.remove();
   }, []);
 
   // Computes active months to display heatmap grids for
   const activeMonths = useMemo(() => {
     if (!selectedPeriod) return [];
-    if (selectedPeriod.type === 'month') {
-      return [{ year: selectedPeriod.year, monthIndex: selectedPeriod.monthIndex! }];
+    if (selectedPeriod.type === "month") {
+      return [
+        { year: selectedPeriod.year, monthIndex: selectedPeriod.monthIndex! },
+      ];
     }
     const months = [];
-    for (let i = selectedPeriod.startMonthIndex!; i <= selectedPeriod.endMonthIndex!; i++) {
+    for (
+      let i = selectedPeriod.startMonthIndex!;
+      i <= selectedPeriod.endMonthIndex!;
+      i++
+    ) {
       months.push({ year: selectedPeriod.year, monthIndex: i });
     }
     return months;
@@ -224,11 +286,26 @@ export default function AnalyticsScreen() {
 
   // Recalculates metrics based on active period selection
   const periodSubjects = useMemo(() => {
-    return subjects.map(subject => {
-      // Basic filtering for prototype
-      const subRecords = records.filter(r => r.subject_id === subject.id);
-      const conducted = subRecords.length;
-      const attended = subRecords.filter(r => r.status === 'present').length;
+    let filteredRecords = records;
+    let displaySubjects = subjects;
+
+    if (selectedPeriod?.type === "month") {
+      const monthPrefix = `${selectedPeriod.year}-${(selectedPeriod.monthIndex! + 1).toString().padStart(2, '0')}`;
+      filteredRecords = records.filter(r => r.date.startsWith(monthPrefix));
+      
+      const activeSubjectIds = new Set(filteredRecords.map(r => r.subject_id));
+      displaySubjects = subjects.filter(s => activeSubjectIds.has(s.id));
+    } else if (selectedPeriod?.type === "semester") {
+       const semId = selectedPeriod.id.replace("sem_", "");
+       displaySubjects = subjects.filter(s => s.semester_id === semId);
+       const semSubjects = displaySubjects.map(s => s.id);
+       filteredRecords = records.filter(r => semSubjects.includes(r.subject_id));
+    }
+
+    return displaySubjects.map((subject) => {
+      const subRecords = filteredRecords.filter((r) => r.subject_id === subject.id);
+      const conducted = subRecords.filter((r) => r.status !== "cancelled").length;
+      const attended = subRecords.filter((r) => r.status === "present").length;
       const percentage = calculatePercentage(attended, conducted);
       return {
         ...subject,
@@ -243,53 +320,63 @@ export default function AnalyticsScreen() {
   // Calculates color codes based on attendance ratio
   const getHeatmapColor = (ratio: number) => {
     if (ratio === -3) return accent.primary; // Holiday (Blue)
-    if (ratio === -2) return 'transparent'; // Padding
+    if (ratio === -2) return "transparent"; // Padding
     if (ratio === -1) return glass.medium; // Off / Weekend
     if (ratio === 1) return attendanceColors.present.base; // 100% (Green)
-    if (ratio === 0.75) return '#84cc16'; // 75% (Lime)
-    if (ratio === 0.5) return '#eab308'; // 50% (Yellow)
-    if (ratio === 0.25) return '#f97316'; // 25% (Orange)
+    if (ratio >= 0.75) return heat.limeHeat; // 75% (Lime)
+    if (ratio >= 0.5) return heat.yellowHeat; // 50% (Yellow)
+    if (ratio >= 0.25) return heat.orangeHeat; // 25% (Orange)
     if (ratio === 0) return gaugeColors.critical; // 0% (Red)
     return glass.subtle;
   };
 
   // CSV Report Exporter
-  const handleExportCSV = async () => {
+  const _handleExportCSV = async () => {
     if (!selectedPeriod) return;
-    
-    let csvContent = 'Subject,Short Name,Attended,Conducted,Percentage,Threshold,Period\n';
-    periodSubjects.forEach(s => {
+
+    let csvContent =
+      "Subject,Short Name,Attended,Conducted,Percentage,Threshold,Period\n";
+    periodSubjects.forEach((s) => {
       csvContent += `"${s.name}","${s.short_name}",${s.totalAttended},${s.totalConducted},${s.percentage}%,${s.threshold}%,"${selectedPeriod.label}"\n`;
     });
 
-    if (Platform.OS === 'web') {
+    if (Platform.OS === "web") {
       try {
-        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const blob = new Blob([csvContent], {
+          type: "text/csv;charset=utf-8;",
+        });
         const url = URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.setAttribute('href', url);
-        link.setAttribute('download', `Attendance_Report_${selectedPeriod.id}.csv`);
+        const link = document.createElement("a");
+        link.setAttribute("href", url);
+        link.setAttribute(
+          "download",
+          `Attendance_Report_${selectedPeriod.id}.csv`,
+        );
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
       } catch (e) {
-        alert('CSV compilation failed: ' + e);
+        alert("CSV compilation failed: " + e);
       }
     } else {
       try {
-        const fileUri = (FileSystem as any).documentDirectory + `Attendance_Report_${selectedPeriod.id}.csv`;
-        await FileSystem.writeAsStringAsync(fileUri, csvContent, { encoding: FileSystem.EncodingType.UTF8 });
-        
+        const fileUri =
+          (FileSystem as any).documentDirectory +
+          `Attendance_Report_${selectedPeriod.id}.csv`;
+        await FileSystem.writeAsStringAsync(fileUri, csvContent, {
+          encoding: FileSystem.EncodingType.UTF8,
+        });
+
         if (await Sharing.isAvailableAsync()) {
           await Sharing.shareAsync(fileUri, {
-            mimeType: 'text/csv',
-            dialogTitle: 'Export Attendance Report',
+            mimeType: "text/csv",
+            dialogTitle: "Export Attendance Report",
           });
         } else {
-          alert('Sharing is not available on this device');
+          alert("Sharing is not available on this device");
         }
       } catch (error) {
-        alert('Failed to export CSV: ' + error);
+        alert("Failed to export CSV: " + error);
       }
     }
   };
@@ -297,8 +384,8 @@ export default function AnalyticsScreen() {
   // PDF Official Document Generator
   const handleExportPDF = async () => {
     if (!selectedPeriod) return;
-    
-    if (Platform.OS === 'web') {
+
+    if (Platform.OS === "web") {
       window.print();
     } else {
       try {
@@ -328,12 +415,12 @@ export default function AnalyticsScreen() {
                   <th>Target</th>
                 </tr>
         `;
-        
-        periodSubjects.forEach(s => {
-          let colorClass = 'danger';
-          if (s.percentage >= s.threshold) colorClass = 'safe';
-          else if (s.percentage >= s.threshold - 10) colorClass = 'warning';
-          
+
+        periodSubjects.forEach((s) => {
+          let colorClass = "danger";
+          if (s.percentage >= s.threshold) colorClass = "safe";
+          else if (s.percentage >= s.threshold - 10) colorClass = "warning";
+
           htmlContent += `
             <tr>
               <td>${s.name} (${s.short_name})</td>
@@ -344,25 +431,25 @@ export default function AnalyticsScreen() {
             </tr>
           `;
         });
-        
+
         htmlContent += `
               </table>
             </body>
           </html>
         `;
-        
+
         const { uri } = await Print.printToFileAsync({ html: htmlContent });
-        
+
         if (await Sharing.isAvailableAsync()) {
           await Sharing.shareAsync(uri, {
-            mimeType: 'application/pdf',
-            dialogTitle: 'Export Attendance PDF',
+            mimeType: "application/pdf",
+            dialogTitle: "Export Attendance PDF",
           });
         } else {
-          alert('Sharing is not available on this device');
+          alert("Sharing is not available on this device");
         }
       } catch (error) {
-        alert('Failed to export PDF: ' + error);
+        alert("Failed to export PDF: " + error);
       }
     }
   };
@@ -377,8 +464,10 @@ export default function AnalyticsScreen() {
   return (
     <View style={styles.screen}>
       {/* Printable CSS style sheet override */}
-      {Platform.OS === 'web' && (
-        <style dangerouslySetInnerHTML={{ __html: `
+      {Platform.OS === "web" && (
+        <style
+          dangerouslySetInnerHTML={{
+            __html: `
           @media print {
             body { background: white !important; color: black !important; }
             .screen, scrollContent { padding: 0 !important; margin: 0 !important; }
@@ -388,7 +477,9 @@ export default function AnalyticsScreen() {
             .legendText { color: #666 !important; }
             h1, h2, h3 { color: black !important; }
           }
-        `}} />
+        `,
+          }}
+        />
       )}
 
       <ScrollView
@@ -398,52 +489,83 @@ export default function AnalyticsScreen() {
         {/* Header Title Row */}
         <View style={styles.header}>
           <Text style={styles.title}>Analytics</Text>
-          <Text style={styles.subtitle}>Smart insights and calendar tracking</Text>
+          <Text style={styles.subtitle}>
+            Smart insights and calendar tracking
+          </Text>
         </View>
 
         {/* Dynamic Selector Dropdown Row & Exports */}
         <View style={styles.selectorRow}>
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.dropdownTrigger}
             activeOpacity={0.8}
             onPress={() => setDropdownVisible(true)}
           >
-            <Ionicons name="calendar-outline" size={16} color={accent.primary} />
-            <Text style={styles.dropdownValue}>{selectedPeriod?.label || 'Loading...'}</Text>
-            <Ionicons name="chevron-down" size={14} color={textColors.tertiary} />
+            <Ionicons
+              name="calendar-outline"
+              size={16}
+              color={accent.primary}
+            />
+            <Text style={styles.dropdownValue} numberOfLines={1}>
+              {selectedPeriod?.label || "Loading..."}
+            </Text>
+            <Ionicons
+              name="chevron-down"
+              size={14}
+              color={textColors.tertiary}
+            />
           </TouchableOpacity>
 
           <View style={styles.exportActionRow}>
-            <TouchableOpacity style={styles.actionPill} onPress={() => setHolidaySheetVisible(true)}>
-              <Ionicons name="calendar-clear-outline" size={16} color={textColors.secondary} />
+            <TouchableOpacity
+              style={styles.actionPill}
+              onPress={() => setHolidaySheetVisible(true)}
+            >
+              <Ionicons
+                name="calendar-clear-outline"
+                size={16}
+                color={textColors.secondary}
+              />
               <Text style={styles.actionPillText}>Holiday</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.actionPill} onPress={handleExportPDF}>
-              <Ionicons name="print-outline" size={16} color={textColors.secondary} />
+            <TouchableOpacity
+              style={styles.actionPill}
+              onPress={handleExportPDF}
+            >
+              <Ionicons
+                name="print-outline"
+                size={16}
+                color={textColors.secondary}
+              />
               <Text style={styles.actionPillText}>PDF</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.actionPill} onPress={handleExportCSV}>
-              <Ionicons name="download-outline" size={16} color={textColors.secondary} />
-              <Text style={styles.actionPillText}>CSV</Text>
             </TouchableOpacity>
           </View>
         </View>
 
         {/* Calendar Heatmap Grids (Single Month or All Semester Months) */}
         {activeMonths.map(({ year, monthIndex }, idx) => {
-          const calendarData = getCalendarMatrix(year, monthIndex, records, holidays);
-          const monthName = new Date(year, monthIndex).toLocaleString('default', { month: 'long', year: 'numeric' });
+          const calendarData = getCalendarMatrix(
+            year,
+            monthIndex,
+            records,
+            holidays,
+          );
+          const monthName = new Date(year, monthIndex).toLocaleString(
+            "default",
+            { month: "long", year: "numeric" },
+          );
           const rows = chunkArray(calendarData, 7);
 
           return (
             <View key={idx} style={styles.monthSection}>
               <Text style={styles.monthSectionTitle}>{monthName}</Text>
               <View style={styles.heatmapCard}>
-                
                 {/* Weekday Row Header */}
                 <View style={styles.weekdayRow}>
-                  {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((day, dIdx) => (
-                    <Text key={dIdx} style={styles.weekdayLabel}>{day}</Text>
+                  {["S", "M", "T", "W", "T", "F", "S"].map((day, dIdx) => (
+                    <Text key={dIdx} style={styles.weekdayLabel}>
+                      {day}
+                    </Text>
                   ))}
                 </View>
 
@@ -454,26 +576,41 @@ export default function AnalyticsScreen() {
                       {week.map((day, dayIdx) => {
                         const cellColor = getHeatmapColor(day.ratio);
                         const hasDay = day.day !== null;
-                        const isSelected = selectedDay && selectedDay.day === day.day && selectedDay.dateStr === day.dateStr;
+                        const isSelected =
+                          selectedDay &&
+                          selectedDay.day === day.day &&
+                          selectedDay.dateStr === day.dateStr;
 
                         return (
                           <TouchableOpacity
                             key={dayIdx}
+                            accessibilityLabel={hasDay ? `Select ${day.dateStr}` : undefined}
+                            accessibilityRole={hasDay ? "button" : undefined}
                             activeOpacity={hasDay ? 0.7 : 1.0}
                             disabled={!hasDay}
                             onPress={() => setSelectedDay(day)}
                             style={[
                               styles.heatCell,
                               { backgroundColor: cellColor },
-                              !hasDay && { borderColor: 'transparent', backgroundColor: 'transparent' },
-                              isSelected && { borderWidth: 2, borderColor: '#fff' }
+                              !hasDay && {
+                                borderColor: "transparent",
+                                backgroundColor: "transparent",
+                              },
+                              isSelected && {
+                                borderWidth: 2,
+                                borderColor: palette.white,
+                              },
                             ]}
                           >
                             {hasDay && (
-                              <Text style={[
-                                styles.dayNumberText,
-                                day.ratio === -1 && { color: textColors.tertiary }
-                              ]}>
+                              <Text
+                                style={[
+                                  styles.dayNumberText,
+                                  day.ratio === -1 && {
+                                    color: textColors.tertiary,
+                                  },
+                                ]}
+                              >
                                 {day.day}
                               </Text>
                             )}
@@ -487,23 +624,39 @@ export default function AnalyticsScreen() {
                 {/* Legend */}
                 <View style={styles.heatmapLegend}>
                   <View style={styles.legendItem}>
-                    <View style={[styles.legendDot, { backgroundColor: attendanceColors.present.base }]} />
+                    <View
+                      style={[
+                        styles.legendDot,
+                        { backgroundColor: attendanceColors.present.base },
+                      ]}
+                    />
                     <Text style={styles.legendText}>100%</Text>
                   </View>
                   <View style={styles.legendItem}>
                     <LinearGradient
-                      colors={['#84cc16', '#eab308', '#f97316']}
-                      start={{x:0, y:0}} end={{x:1, y:0}}
+                      colors={[heat.limeHeat, heat.yellowHeat, heat.orangeHeat]}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 0 }}
                       style={[styles.legendDot, { width: 32 }]}
                     />
                     <Text style={styles.legendText}>Partial</Text>
                   </View>
                   <View style={styles.legendItem}>
-                    <View style={[styles.legendDot, { backgroundColor: gaugeColors.critical }]} />
+                    <View
+                      style={[
+                        styles.legendDot,
+                        { backgroundColor: gaugeColors.critical },
+                      ]}
+                    />
                     <Text style={styles.legendText}>0%</Text>
                   </View>
                   <View style={styles.legendItem}>
-                    <View style={[styles.legendDot, { backgroundColor: glass.medium }]} />
+                    <View
+                      style={[
+                        styles.legendDot,
+                        { backgroundColor: glass.medium },
+                      ]}
+                    />
                     <Text style={styles.legendText}>Off</Text>
                   </View>
                 </View>
@@ -517,25 +670,38 @@ export default function AnalyticsScreen() {
           <View style={styles.detailCard}>
             <View style={styles.detailHeader}>
               <Text style={styles.detailTitle}>
-                {new Date(selectedDay.dateStr + 'T00:00:00').toLocaleDateString('en-US', {
-                  month: 'long',
-                  day: 'numeric',
-                  year: 'numeric',
-                })}
+                {new Date(selectedDay.dateStr + "T00:00:00").toLocaleDateString(
+                  "en-US",
+                  {
+                    month: "long",
+                    day: "numeric",
+                    year: "numeric",
+                  },
+                )}
               </Text>
               <TouchableOpacity onPress={() => setSelectedDay(null)}>
                 <Ionicons name="close" size={18} color={textColors.secondary} />
               </TouchableOpacity>
             </View>
             <View style={styles.detailRow}>
-              <Ionicons 
-                name={selectedDay.ratio === -1 ? 'sunny-outline' : selectedDay.ratio === 1 ? 'checkmark-circle-outline' : 'warning-outline'} 
-                size={20} 
-                color={getHeatmapColor(selectedDay.ratio) === 'transparent' ? textColors.primary : getHeatmapColor(selectedDay.ratio)} 
+              <Ionicons
+                name={
+                  selectedDay.ratio === -1
+                    ? "sunny-outline"
+                    : selectedDay.ratio === 1
+                      ? "checkmark-circle-outline"
+                      : "warning-outline"
+                }
+                size={20}
+                color={
+                  getHeatmapColor(selectedDay.ratio) === "transparent"
+                    ? textColors.primary
+                    : getHeatmapColor(selectedDay.ratio)
+                }
               />
               <Text style={styles.detailStatusText}>
-                {selectedDay.ratio === -1 
-                  ? 'Official Holiday / Sunday' 
+                {selectedDay.ratio === -1
+                  ? "Official Holiday / Sunday"
                   : `Attendance Ratio: ${Math.round(selectedDay.ratio * 100)}%`}
               </Text>
             </View>
@@ -544,23 +710,73 @@ export default function AnalyticsScreen() {
                 <Text style={styles.detailSubtext}>Logged Lectures:</Text>
                 <Text style={styles.detailLectureLog}>
                   {records
-                    .filter(r => r.date === selectedDay.dateStr)
-                    .map(r => {
-                      const subject = subjects.find(s => s.id === r.subject_id);
-                      const icon = r.status === 'present' ? '✅' : '❌';
-                      return `• ${subject?.name || 'Unknown'}: ${icon} ${r.status.toUpperCase()} (${r.duration_minutes || 0} min)`;
-                    }).join('\n') || 'No records found for this day.'}
+                    .filter((r) => r.date === selectedDay.dateStr)
+                    .map((r) => {
+                      const subject = subjects.find(
+                        (s) => s.id === r.subject_id,
+                      );
+                      const icon = r.status === "present" ? "✅" : "❌";
+                      return `• ${subject?.name || "Unknown"}: ${icon} ${r.status.toUpperCase()} (${r.duration_minutes || 0} min)`;
+                    })
+                    .join("\n") || "No records found for this day."}
                 </Text>
               </View>
             )}
           </View>
         )}
 
+        {/* Faculty Insights */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Faculty Insights</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginHorizontal: -layout.screenPaddingH }} contentContainerStyle={{ paddingHorizontal: layout.screenPaddingH, gap: spacing.md }}>
+            {Array.from(new Set(records.map(r => r.teacher_name).filter(Boolean))).map(teacher => {
+              if (!teacher) return null;
+              
+              let displayName = teacher;
+              try {
+                if (teacher.startsWith('{')) {
+                  const obj = JSON.parse(teacher);
+                  displayName = obj.n;
+                }
+              } catch(e) {}
+              
+              const teacherRecords = records.filter(r => r.teacher_name === teacher);
+              const conducted = teacherRecords.filter(r => r.status !== 'cancelled').length;
+              const attended = teacherRecords.filter(r => r.status === 'present').length;
+              const ratedRecords = teacherRecords.filter(r => typeof r.rating === 'number');
+              const avgRating = ratedRecords.length > 0 
+                ? (ratedRecords.reduce((sum, r) => sum + (r.rating || 0), 0) / ratedRecords.length).toFixed(1)
+                : 'N/A';
+              const attPerc = calculatePercentage(attended, conducted);
+
+              return (
+                <View key={teacher} style={styles.facultyCard}>
+                  <Text style={styles.facultyName} numberOfLines={1}>{displayName}</Text>
+                  <View style={styles.facultyStatsRow}>
+                    <View style={styles.facultyStatBox}>
+                      <Text style={styles.facultyStatValue}>⭐ {avgRating}</Text>
+                      <Text style={styles.facultyStatLabel}>Avg Rating</Text>
+                    </View>
+                    <View style={styles.facultyStatBox}>
+                      <Text style={styles.facultyStatValue}>{attPerc}%</Text>
+                      <Text style={styles.facultyStatLabel}>Attendance</Text>
+                    </View>
+                    <View style={styles.facultyStatBox}>
+                      <Text style={styles.facultyStatValue}>{conducted}</Text>
+                      <Text style={styles.facultyStatLabel}>Lectures</Text>
+                    </View>
+                  </View>
+                </View>
+              );
+            })}
+          </ScrollView>
+        </View>
+
         {/* Subject Risk Matrix with Compliance Lines */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Subject Risk Matrix</Text>
           <View style={styles.matrixContainer}>
-            {periodSubjects.map(subject => {
+            {periodSubjects.map((subject) => {
               let barColor: string = gaugeColors.critical;
               if (subject.percentage >= 85) barColor = gaugeColors.safe;
               else if (subject.percentage >= 75) barColor = gaugeColors.warning;
@@ -568,21 +784,39 @@ export default function AnalyticsScreen() {
               return (
                 <View key={subject.id} style={styles.matrixItem}>
                   <View style={styles.matrixHeader}>
-                    <Text style={styles.matrixSubjectName} numberOfLines={1}>{subject.name}</Text>
-                    <Text style={[styles.matrixPercentage, { color: barColor }]}>{subject.percentage}%</Text>
+                    <Text style={styles.matrixSubjectName} numberOfLines={1}>
+                      {subject.name}
+                    </Text>
+                    <Text
+                      style={[styles.matrixPercentage, { color: barColor }]}
+                    >
+                      {subject.percentage}%
+                    </Text>
                   </View>
                   <View style={styles.progressContainer}>
                     <View style={styles.progressTrack}>
-                      <View style={[styles.progressFill, { width: `${subject.percentage}%`, backgroundColor: barColor }]} />
-                      
+                      <View
+                        style={[
+                          styles.progressFill,
+                          {
+                            width: `${subject.percentage}%`,
+                            backgroundColor: barColor,
+                          },
+                        ]}
+                      />
+
                       {/* 75% Compliance line */}
-                      <View style={[styles.markerLine, { left: '75%' }]}>
-                        <Text style={styles.markerLabel}>75% Warning</Text>
+                      <View style={[styles.markerLine, { left: "75%" }]}>
+                        <Text style={[styles.markerLabel, { bottom: -18 }]}>
+                          75% Warn
+                        </Text>
                       </View>
-                      
+
                       {/* 85% Compliance line */}
-                      <View style={[styles.markerLine, { left: '85%' }]}>
-                        <Text style={styles.markerLabel}>85% Safe</Text>
+                      <View style={[styles.markerLine, { left: "85%" }]}>
+                        <Text style={[styles.markerLabel, { bottom: -32 }]}>
+                          85% Safe
+                        </Text>
                       </View>
                     </View>
                   </View>
@@ -591,25 +825,64 @@ export default function AnalyticsScreen() {
             })}
           </View>
         </View>
-        
+
         {/* Recent History Log */}
-        <View style={[styles.section, { marginTop: spacing['2xl'] }]}>
+        <View style={[styles.section, { marginTop: spacing["2xl"] }]}>
           <Text style={styles.sectionTitle}>Recent Log</Text>
           <View style={styles.historyList}>
             {records.slice(0, 10).map((r, idx) => {
-              const subject = subjects.find(s => s.id === r.subject_id);
-              const isPresent = r.status === 'present';
+              const subject = subjects.find((s) => s.id === r.subject_id);
+              const isPresent = r.status === "present";
               return (
                 <View key={idx} style={styles.historyItem}>
-                  <View style={[styles.historyIcon, { backgroundColor: isPresent ? attendanceColors.present.surface : attendanceColors.absent.surface }]}>
-                    <Ionicons name={isPresent ? "checkmark" : "close"} size={16} color={isPresent ? attendanceColors.present.base : attendanceColors.absent.base} />
+                  <View
+                    style={[
+                      styles.historyIcon,
+                      {
+                        backgroundColor: isPresent
+                          ? attendanceColors.present.surface
+                          : attendanceColors.absent.surface,
+                      },
+                    ]}
+                  >
+                    <Ionicons
+                      name={isPresent ? "checkmark" : "close"}
+                      size={16}
+                      color={
+                        isPresent
+                          ? attendanceColors.present.base
+                          : attendanceColors.absent.base
+                      }
+                    />
                   </View>
                   <View style={styles.historyContent}>
-                    <Text style={styles.historySubject}>{subject?.name || 'Unknown Subject'}</Text>
-                    <Text style={styles.historyDate}>{new Date(r.date + 'T00:00:00').toLocaleDateString()}</Text>
+                    <Text style={styles.historySubject}>
+                      {subject?.name || "Unknown Subject"}
+                    </Text>
+                    <Text style={styles.historyDate}>
+                      {new Date(r.date + "T00:00:00").toLocaleDateString()}
+                    </Text>
                   </View>
-                  <View style={[styles.statusBadge, { backgroundColor: isPresent ? attendanceColors.present.surface : attendanceColors.absent.surface }]}>
-                    <Text style={[styles.statusText, { color: isPresent ? attendanceColors.present.base : attendanceColors.absent.base }]}>
+                  <View
+                    style={[
+                      styles.statusBadge,
+                      {
+                        backgroundColor: isPresent
+                          ? attendanceColors.present.surface
+                          : attendanceColors.absent.surface,
+                      },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.statusText,
+                        {
+                          color: isPresent
+                            ? attendanceColors.present.base
+                            : attendanceColors.absent.base,
+                        },
+                      ]}
+                    >
                       {r.status}
                     </Text>
                   </View>
@@ -626,24 +899,37 @@ export default function AnalyticsScreen() {
           animationType="fade"
           onRequestClose={() => setDropdownVisible(false)}
         >
-          <TouchableOpacity 
-            style={styles.modalOverlay} 
-            activeOpacity={1} 
+          <TouchableOpacity
+            style={styles.modalOverlay}
+            activeOpacity={1}
             onPress={() => setDropdownVisible(false)}
           >
             <View style={styles.dropdownContainer}>
               <Text style={styles.dropdownTitle}>Select Time Period</Text>
-              {periods.map(p => (
+              {periods.map((p) => (
                 <TouchableOpacity
                   key={p.id}
-                  style={[styles.dropdownItem, selectedPeriod?.id === p.id && styles.dropdownItemActive]}
+                  style={[
+                    styles.dropdownItem,
+                    selectedPeriod?.id === p.id && styles.dropdownItemActive,
+                  ]}
                   onPress={() => handlePeriodSelect(p)}
                 >
-                  <Text style={[styles.dropdownItemText, selectedPeriod?.id === p.id && styles.dropdownItemTextActive]}>
+                  <Text
+                    style={[
+                      styles.dropdownItemText,
+                      selectedPeriod?.id === p.id &&
+                        styles.dropdownItemTextActive,
+                    ]}
+                  >
                     {p.label}
                   </Text>
                   {selectedPeriod?.id === p.id && (
-                    <Ionicons name="checkmark" size={16} color={accent.primary} />
+                    <Ionicons
+                      name="checkmark"
+                      size={16}
+                      color={accent.primary}
+                    />
                   )}
                 </TouchableOpacity>
               ))}
@@ -652,12 +938,14 @@ export default function AnalyticsScreen() {
         </Modal>
 
         {/* Bottom padding for tab spacing */}
-        <View style={{ height: layout.bottomNavHeight + spacing['2xl'] }} />
+        <View
+          style={{ height: layout.bottomNavHeight + spacing["3xl"] + 30 }}
+        />
       </ScrollView>
 
       <HolidayManagerSheet
         visible={holidaySheetVisible}
-        semesterId={activeSemesterId}
+        semesterId={undefined}
         onClose={() => setHolidaySheetVisible(false)}
         onRefresh={loadData}
       />
@@ -671,7 +959,7 @@ const styles = StyleSheet.create({
     backgroundColor: canvas.base,
   },
   scrollContent: {
-    paddingTop: Platform.OS === 'web' ? spacing['3xl'] : spacing.xl,
+    paddingTop: Platform.OS === "web" ? spacing["3xl"] : spacing.xl,
     paddingHorizontal: layout.screenPaddingH,
   },
 
@@ -681,6 +969,7 @@ const styles = StyleSheet.create({
   },
   title: {
     ...textStyle.pageTitle,
+    color: textColors.primary,
     marginBottom: spacing.xs,
   },
   subtitle: {
@@ -691,37 +980,36 @@ const styles = StyleSheet.create({
 
   // ── Selector Dropdown Row
   selectorRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     marginBottom: spacing.xl,
     gap: spacing.md,
   },
   dropdownTrigger: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
+    minWidth: 140,
+    flexDirection: "row",
+    alignItems: "center",
     backgroundColor: glass.medium,
     borderWidth: 1,
     borderColor: border.default,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm + 2,
     borderRadius: radius.md,
-    gap: spacing.sm,
+    gap: spacing.xs,
   },
   dropdownValue: {
-    flex: 1,
     fontFamily: fontFamily.bold,
-    fontSize: fontSize.sm,
+    fontSize: 12,
     color: textColors.primary,
   },
   exportActionRow: {
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: spacing.xs,
   },
   actionPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     backgroundColor: glass.light,
     borderWidth: 1,
     borderColor: border.default,
@@ -745,7 +1033,7 @@ const styles = StyleSheet.create({
     fontSize: fontSize.md,
     color: textColors.primary,
     marginBottom: spacing.sm,
-    textTransform: 'capitalize',
+    textTransform: "capitalize",
   },
 
   // ── Heatmap Card and Grid Layouts
@@ -758,13 +1046,13 @@ const styles = StyleSheet.create({
     ...shadow.low,
   },
   weekdayRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    justifyContent: "space-between",
     marginBottom: spacing.md,
   },
   weekdayLabel: {
-    width: 32,
-    textAlign: 'center',
+    flex: 1,
+    textAlign: "center",
     fontFamily: fontFamily.bold,
     fontSize: fontSize.xs,
     color: textColors.tertiary,
@@ -773,35 +1061,36 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   weekRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between', // Maintains gaps between cells
+    flexDirection: "row",
+    justifyContent: "space-between", // Maintains gaps between cells
   },
   heatCell: {
-    width: 32,
-    height: 32,
+    flex: 1,
+    aspectRatio: 1,
+    maxWidth: '13%',
     borderRadius: 8,
     borderWidth: 1,
     borderColor: border.medium,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
   },
   dayNumberText: {
     fontFamily: fontFamily.bold,
     fontSize: 10,
-    color: '#fff',
+    color: palette.white,
   },
   heatmapLegend: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     marginTop: spacing.xl,
     paddingTop: spacing.lg,
     borderTopWidth: 1,
     borderTopColor: border.default,
   },
   legendItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: spacing.xs,
   },
   legendDot: {
@@ -822,14 +1111,14 @@ const styles = StyleSheet.create({
     borderColor: border.default,
     borderRadius: radius.lg,
     padding: spacing.xl,
-    marginBottom: spacing['2xl'],
+    marginBottom: spacing["2xl"],
     gap: spacing.md,
     ...shadow.medium,
   },
   detailHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
   },
   detailTitle: {
     fontFamily: fontFamily.bold,
@@ -837,8 +1126,8 @@ const styles = StyleSheet.create({
     color: textColors.primary,
   },
   detailRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: spacing.sm,
   },
   detailStatusText: {
@@ -883,9 +1172,9 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   matrixHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
   },
   matrixSubjectName: {
     fontFamily: fontFamily.semiBold,
@@ -905,31 +1194,30 @@ const styles = StyleSheet.create({
     height: 8,
     backgroundColor: glass.medium,
     borderRadius: 4,
-    position: 'relative',
+    position: "relative",
   },
   progressFill: {
-    height: '100%',
+    height: "100%",
     borderRadius: 4,
   },
   markerLine: {
-    position: 'absolute',
-    top: -16,
-    bottom: -4,
+    position: "absolute",
+    top: 4,
+    bottom: -16,
     width: 2,
     backgroundColor: border.medium,
-    alignItems: 'center',
+    alignItems: "center",
     zIndex: 10,
   },
   markerLabel: {
-    position: 'absolute',
-    top: -14,
+    position: "absolute",
+    bottom: -14,
     fontFamily: fontFamily.bold,
     fontSize: 7,
     color: textColors.tertiary,
-    backgroundColor: canvas.base,
-    paddingHorizontal: 2,
-    minWidth: 60,
-    textAlign: 'center',
+    backgroundColor: "transparent",
+    minWidth: 50,
+    textAlign: "center",
   },
 
   // ── History Log Styles
@@ -937,8 +1225,8 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   historyItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     backgroundColor: glass.light,
     borderWidth: 1,
     borderColor: border.default,
@@ -949,8 +1237,8 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     marginRight: spacing.md,
   },
   historyContent: {
@@ -976,15 +1264,15 @@ const styles = StyleSheet.create({
   statusText: {
     fontFamily: fontFamily.bold,
     fontSize: 10,
-    textTransform: 'uppercase',
+    textTransform: "uppercase",
   },
 
   // ── Modal Selector Styles
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    justifyContent: 'center',
-    alignItems: 'center',
+    backgroundColor: "rgba(0,0,0,0.6)",
+    justifyContent: "center",
+    alignItems: "center",
     padding: spacing.lg,
   },
   dropdownContainer: {
@@ -992,7 +1280,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: border.default,
     borderRadius: radius.xl,
-    width: '100%',
+    width: "100%",
     maxWidth: 340,
     padding: spacing.lg,
     ...shadow.high,
@@ -1007,9 +1295,9 @@ const styles = StyleSheet.create({
     borderBottomColor: border.default,
   },
   dropdownItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     paddingVertical: spacing.md,
     paddingHorizontal: spacing.sm,
     borderRadius: radius.md,
@@ -1025,5 +1313,37 @@ const styles = StyleSheet.create({
   dropdownItemTextActive: {
     fontFamily: fontFamily.bold,
     color: accent.primary,
+  },
+  facultyCard: {
+    backgroundColor: glass.medium,
+    borderRadius: radius.lg,
+    padding: spacing.lg,
+    borderWidth: 1,
+    borderColor: border.default,
+    width: 260,
+  },
+  facultyName: {
+    fontFamily: fontFamily.bold,
+    fontSize: fontSize.base,
+    color: textColors.primary,
+    marginBottom: spacing.md,
+  },
+  facultyStatsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  facultyStatBox: {
+    alignItems: 'center',
+  },
+  facultyStatValue: {
+    fontFamily: fontFamily.bold,
+    fontSize: fontSize.base,
+    color: textColors.primary,
+  },
+  facultyStatLabel: {
+    fontFamily: fontFamily.medium,
+    fontSize: fontSize.xs,
+    color: textColors.tertiary,
+    marginTop: 2,
   },
 });

@@ -55,8 +55,8 @@ CREATE INDEX idx_slots_subject ON timetable_slots(subject_id);
 CREATE INDEX idx_records_subject ON attendance_records(subject_id);
 CREATE INDEX idx_records_date ON attendance_records(date);
 
--- Security: Disable Row Level Security for local/personal use (can be enabled later for multi-user auth)
-ALTER TABLE academic_semesters DISABLE ROW LEVEL SECURITY;
-ALTER TABLE subjects DISABLE ROW LEVEL SECURITY;
-ALTER TABLE timetable_slots DISABLE ROW LEVEL SECURITY;
-ALTER TABLE attendance_records DISABLE ROW LEVEL SECURITY;
+-- Security: Enable Row Level Security by default to secure the tables.
+ALTER TABLE academic_semesters ENABLE ROW LEVEL SECURITY;
+ALTER TABLE subjects ENABLE ROW LEVEL SECURITY;
+ALTER TABLE timetable_slots ENABLE ROW LEVEL SECURITY;
+ALTER TABLE attendance_records ENABLE ROW LEVEL SECURITY;

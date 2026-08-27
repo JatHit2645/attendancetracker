@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { DatabaseService } from './DatabaseService';
 import { Database } from '../lib/database.types';
+import { supabase } from '../lib/supabase';
+import { LogbookService } from './LogbookService';
 
 type AttendanceRecordInsert = Omit<Database['public']['Tables']['attendance_records']['Insert'], 'id' | 'created_at'>;
 
@@ -61,13 +62,13 @@ export const SyncService = {
       
       const failedQueue: AttendanceRecordInsert[] = [];
       
-      for (const record of queue) {
-        try {
-          await DatabaseService.logAttendanceSession(record);
-        } catch (error) {
-          console.error('Failed to sync record to Supabase, pushing back to queue:', record, error);
-          failedQueue.push(record);
-        }
+      try {
+        const { error } = await supabase.from('attendance_records').insert(queue);
+        if (error) throw error;
+        await LogbookService.addLog('create', 'attendance', `Bulk synced ${queue.length} offline attendance records`);
+      } catch (error) {
+        console.error('Failed to bulk sync records to Supabase:', error);
+        failedQueue.push(...queue);
       }
 
       // Re-read queue before writing to catch any items queued DURING flush

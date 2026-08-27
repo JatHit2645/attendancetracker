@@ -6,7 +6,6 @@ import {
   text as textColors,
   attendance as attendanceColors,
   accent,
-  shadow,
 } from '../theme/colors';
 import { fontFamily, fontSize, textStyle } from '../theme/typography';
 import { spacing, radius } from '../theme/spacing';

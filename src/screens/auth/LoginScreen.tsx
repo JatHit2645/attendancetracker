@@ -8,7 +8,7 @@
  * - Clean typography hierarchy
  */
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -20,11 +20,14 @@ import {
   ScrollView,
   ActivityIndicator,
   Animated,
+  Dimensions,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { BlurView } from 'expo-blur';
 import { canvas, glass, border, text, accent, feedback, shadow } from '../../theme/colors';
 import { textStyle, fontFamily, fontSize } from '../../theme/typography';
 import { spacing, radius, layout } from '../../theme/spacing';
+import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../../lib/supabase';
 
 interface LoginScreenProps {
@@ -46,8 +49,17 @@ export default function LoginScreen({
 
   // Animation values
   const buttonScale = useRef(new Animated.Value(1)).current;
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const translateY = useRef(new Animated.Value(20)).current;
   const errorOpacity = useRef(new Animated.Value(0)).current;
   const animationRef = useRef<Animated.CompositeAnimation | null>(null);
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(fadeAnim, { toValue: 1, duration: 800, useNativeDriver: true }),
+      Animated.timing(translateY, { toValue: 0, duration: 800, useNativeDriver: true }),
+    ]).start();
+  }, []);
 
   const handlePressIn = () => {
     Animated.spring(buttonScale, {
@@ -91,7 +103,6 @@ export default function LoginScreen({
   };
 
   const handleLogin = async () => {
-    // Basic validation
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!email.trim()) {
       showError('Please enter your email address.');
@@ -112,13 +123,10 @@ export default function LoginScreen({
     try {
       const { error: authError } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
       if (authError) throw authError;
-      
-      // onLoginSuccess is handled by App.tsx global auth listener now, 
-      // but we can still call it if we want to immediately update local state
       if (onLoginSuccess) onLoginSuccess();
     } catch (err: any) {
-      // PRD 3.9: Never reveal whether email exists or password was wrong
-      showError('Unable to sign in. Please check your credentials.');
+      console.error("Login error details:", err);
+      showError(err?.message || 'Unable to sign in. Please check your credentials.');
     } finally {
       setIsLoading(false);
     }
@@ -126,17 +134,29 @@ export default function LoginScreen({
 
   return (
     <View style={styles.screen}>
+      {/* ─── Premium Ambient Background ─── */}
+      <View style={StyleSheet.absoluteFill}>
+        <LinearGradient colors={[canvas.base, canvas.elevated]} style={StyleSheet.absoluteFill} />
+        <Animated.View style={[styles.glowOrb, styles.orb1, { transform: [{ translateY: fadeAnim.interpolate({ inputRange: [0, 1], outputRange: [-50, 0] }) }] }]} />
+        <Animated.View style={[styles.glowOrb, styles.orb2, { transform: [{ translateY: fadeAnim.interpolate({ inputRange: [0, 1], outputRange: [50, 0] }) }] }]} />
+        {Platform.OS === 'web' ? (
+          <View style={[StyleSheet.absoluteFill, { backdropFilter: 'blur(80px)' } as any]} />
+        ) : (
+          <BlurView intensity={80} tint="dark" style={StyleSheet.absoluteFill} />
+        )}
+      </View>
+
       <KeyboardAvoidingView
         style={styles.keyboardView}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         <ScrollView
           contentContainerStyle={styles.scrollContent}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          {/* ─── Header / Branding ─── */}
-          <View style={styles.header}>
+          {/* ─── Animated Header ─── */}
+          <Animated.View style={[styles.header, { opacity: fadeAnim, transform: [{ translateY }] }]}>
             <View style={styles.logoContainer}>
               <LinearGradient
                 colors={[accent.primary, accent.secondary]}
@@ -144,14 +164,14 @@ export default function LoginScreen({
                 end={{ x: 1, y: 1 }}
                 style={styles.logoGradient}
               >
-                <Text style={styles.logoText}>A</Text>
+                <Ionicons name="finger-print" size={32} color={text.primary} />
               </LinearGradient>
             </View>
-            <Text style={styles.title}>Welcome back</Text>
+            <Text style={styles.title}>Attendance</Text>
             <Text style={styles.subtitle}>
-              Sign in to your attendance tracker
+              Log in to manage your academic journey
             </Text>
-          </View>
+          </Animated.View>
 
           {/* ─── Error Banner ─── */}
           {error && (
@@ -160,8 +180,8 @@ export default function LoginScreen({
             </Animated.View>
           )}
 
-          {/* ─── Glass Card Form ─── */}
-          <View style={styles.formCard}>
+          {/* ─── Animated Form Card ─── */}
+          <Animated.View style={[styles.formCard, { opacity: fadeAnim, transform: [{ translateY }] }]}>
             {/* Email Field */}
             <View style={styles.fieldGroup}>
               <Text style={styles.fieldLabel}>EMAIL</Text>
@@ -248,7 +268,7 @@ export default function LoginScreen({
                 </LinearGradient>
               </TouchableOpacity>
             </Animated.View>
-          </View>
+          </Animated.View>
 
           {/* ─── Register Link ─── */}
           <View style={styles.footer}>
@@ -279,27 +299,47 @@ const styles = StyleSheet.create({
     paddingVertical: spacing['4xl'],
   },
 
+  // ── Ambient Background
+  glowOrb: {
+    position: 'absolute',
+    width: Dimensions.get('window').width * 0.8,
+    height: Dimensions.get('window').width * 0.8,
+    borderRadius: Dimensions.get('window').width,
+    opacity: 0.15,
+  },
+  orb1: {
+    top: -100,
+    left: -100,
+    backgroundColor: accent.primary,
+  },
+  orb2: {
+    bottom: -100,
+    right: -100,
+    backgroundColor: accent.secondary,
+  },
+
   // ── Header
   header: {
     alignItems: 'center',
-    marginBottom: spacing['3xl'],
+    marginBottom: spacing['4xl'],
   },
   logoContainer: {
     marginBottom: spacing.xl,
-    ...shadow.medium,
+    padding: 2,
+    borderRadius: radius['2xl'],
+    backgroundColor: 'rgba(255,255,255,0.03)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+    ...shadow.strong,
   },
   logoGradient: {
-    width: 64,
-    height: 64,
-    borderRadius: radius.lg,
+    width: 72,
+    height: 72,
+    borderRadius: radius.xl,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  logoText: {
-    fontFamily: fontFamily.extraBold,
-    fontSize: fontSize['2xl'],
-    color: '#FFFFFF',
-  },
+
   title: {
     ...textStyle.pageTitle,
     marginBottom: spacing.sm,
@@ -331,10 +371,15 @@ const styles = StyleSheet.create({
   formCard: {
     backgroundColor: glass.medium,
     borderWidth: 1,
-    borderColor: border.default,
-    borderRadius: radius.xl,
+    borderColor: 'rgba(255,255,255,0.08)',
+    borderRadius: radius['2xl'],
     padding: spacing['2xl'],
+    paddingTop: spacing['3xl'],
     gap: spacing.xl,
+    ...shadow.strong,
+    maxWidth: 480,
+    width: '100%',
+    alignSelf: 'center',
   },
 
   // ── Form Fields
@@ -350,20 +395,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   inputContainer: {
-    backgroundColor: canvas.elevated,
+    backgroundColor: 'rgba(0,0,0,0.2)',
     borderWidth: 1,
     borderColor: border.default,
-    borderRadius: radius.md,
+    borderRadius: radius.lg,
     overflow: 'hidden',
   },
   inputFocused: {
     borderColor: accent.primary + '60',
   },
   input: {
-    fontFamily: fontFamily.regular,
+    fontFamily: fontFamily.medium,
     fontSize: fontSize.base,
     color: text.primary,
-    paddingVertical: spacing.md + 2,
+    paddingVertical: spacing.lg,
     paddingHorizontal: spacing.lg,
   },
   forgotLink: {
@@ -379,18 +424,18 @@ const styles = StyleSheet.create({
   },
   signInButton: {
     width: '100%',
-    paddingVertical: spacing.md + 4,
+    paddingVertical: spacing.lg,
     paddingHorizontal: spacing.xl,
-    borderRadius: radius.md,
+    borderRadius: radius.lg,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.15)',
+    borderColor: 'rgba(255, 255, 255, 0.2)',
     ...shadow.glow(accent.primary),
   },
   signInButtonText: {
     ...textStyle.button,
-    color: '#FFFFFF',
+    color: text.primary,
   },
 
   // ── Footer

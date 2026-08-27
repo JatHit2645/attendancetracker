@@ -9,11 +9,9 @@
  * - Smooth icon transitions
  */
 
-import { View, Text, TouchableOpacity, StyleSheet, Platform, Pressable } from 'react-native';
+import { View, Text, StyleSheet, Platform, Pressable } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import {
-  canvas,
-  glass,
   border,
   text as textColors,
   accent,
@@ -86,10 +84,10 @@ export default function BottomTabBar({ activeTab, onTabPress }: BottomTabBarProp
               accessibilityState={{ selected: isActive }}
               accessibilityLabel={`${tab.label} tab`}
             >
-              <View style={[styles.iconContainer, isActive && styles.iconContainerActive]}>
+              <View style={styles.iconContainer}>
                 <Ionicons
                   name={isActive ? tab.iconActive : tab.iconInactive}
-                  size={24}
+                  size={22}
                   color={isActive ? accent.primary : textColors.tertiary}
                 />
               </View>
@@ -103,6 +101,12 @@ export default function BottomTabBar({ activeTab, onTabPress }: BottomTabBarProp
               >
                 {tab.label}
               </Text>
+              
+              {isActive ? (
+                <View style={styles.activeDot} />
+              ) : (
+                <View style={styles.inactiveDotSpace} />
+              )}
             </Pressable>
           );
         })}
@@ -117,47 +121,56 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
-    paddingHorizontal: spacing.xl,
-    paddingBottom: Platform.OS === 'ios' ? spacing['3xl'] : spacing.xl,
+    paddingHorizontal: spacing.md,
+    paddingBottom: Platform.OS === 'ios' ? spacing['2xl'] : spacing.md,
     alignItems: 'center',
   },
   container: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: glass.heavy,
+    backgroundColor: '#12131C', // 100% solid dark background
     borderWidth: 1,
     borderColor: border.default,
     borderRadius: radius.full,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.sm,
     ...shadow.strong,
     width: '100%',
     maxWidth: layout.maxContentWidth,
-    height: layout.bottomNavHeight,
+    height: 64,
   },
   tab: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 4,
+    gap: 2,
     height: '100%',
   },
   iconContainer: {
-    width: 44,
-    height: 32,
+    width: 28,
+    height: 26,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: radius.full,
-  },
-  iconContainerActive: {
-    backgroundColor: accent.primarySurface,
   },
   label: {
+    fontSize: 11,
     color: textColors.tertiary,
   },
   labelActive: {
     color: accent.primary,
     fontFamily: fontFamily.bold,
+  },
+  activeDot: {
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: accent.primary,
+    marginTop: 2,
+  },
+  inactiveDotSpace: {
+    width: 4,
+    height: 4,
+    marginTop: 2,
   },
 });

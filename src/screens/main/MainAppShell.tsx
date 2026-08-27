@@ -19,7 +19,7 @@ import SubjectsScreen from './SubjectsScreen';
 import TimetableScreen from './TimetableScreen';
 import AnalyticsScreen from './AnalyticsScreen';
 import ProfileScreen from './ProfileScreen';
-import PlaceholderScreen from './PlaceholderScreen';
+
 import { canvas } from '../../theme/colors';
 import { DatabaseService } from '../../services/DatabaseService';
 
@@ -27,9 +27,15 @@ export default function MainAppShell() {
   const [activeTab, setActiveTab] = useState<TabName>('dashboard');
 
   useEffect(() => {
-    const checkAutoActivateSemester = async () => {
+    const checkAndInitializeUser = async () => {
       try {
-        const semesters = await DatabaseService.fetchSemesters();
+        let semesters = await DatabaseService.fetchSemesters();
+        if (semesters.length === 0) {
+          // If a new user logs in for the first time (especially with email confirmation enabled), seed their initial semester
+          await DatabaseService.initializeNewUser();
+          semesters = await DatabaseService.fetchSemesters();
+        }
+
         const activeSem = await DatabaseService.fetchActiveSemester();
         const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
 
@@ -44,30 +50,30 @@ export default function MainAppShell() {
           await DatabaseService.activateSemester(matchingSemester.id);
         }
       } catch (e) {
-        console.warn('Auto-semester date activation check failed', e);
+        console.warn('User initialization or auto-semester activation check failed', e);
       }
     };
 
-    checkAutoActivateSemester();
+    checkAndInitializeUser();
   }, []);
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
       <View style={styles.contentContainer}>
         <View style={[styles.screenWrapper, activeTab !== 'dashboard' && styles.hidden]}>
-          <DashboardScreen />
+          <DashboardScreen isActive={activeTab === 'dashboard'} />
         </View>
         <View style={[styles.screenWrapper, activeTab !== 'subjects' && styles.hidden]}>
-          <SubjectsScreen />
+          <SubjectsScreen isActive={activeTab === 'subjects'} />
         </View>
         <View style={[styles.screenWrapper, activeTab !== 'timetable' && styles.hidden]}>
-          <TimetableScreen />
+          <TimetableScreen isActive={activeTab === 'timetable'} />
         </View>
         <View style={[styles.screenWrapper, activeTab !== 'analytics' && styles.hidden]}>
-          <AnalyticsScreen />
+          <AnalyticsScreen isActive={activeTab === 'analytics'} />
         </View>
         <View style={[styles.screenWrapper, activeTab !== 'profile' && styles.hidden]}>
-          <ProfileScreen />
+          <ProfileScreen isActive={activeTab === 'profile'} />
         </View>
       </View>
       <BottomTabBar activeTab={activeTab} onTabPress={setActiveTab} />

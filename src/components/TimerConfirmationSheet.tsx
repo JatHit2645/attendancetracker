@@ -10,6 +10,7 @@ import {
   KeyboardAvoidingView,
   TextInput,
   Keyboard,
+  ScrollView,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
@@ -102,6 +103,17 @@ export default function TimerConfirmationSheet({
   const [teacherName, setTeacherName] = useState<string>('');
   const [rating, setRating] = useState<string>('');
 
+  const handleRatingChange = (text: string) => {
+    const cleaned = text.replace(/[^0-9.]/g, '');
+    let parsed = parseFloat(cleaned);
+    if (!isNaN(parsed)) {
+      if (parsed > 10) parsed = 10;
+      setRating(parsed.toString());
+    } else {
+      setRating('');
+    }
+  };
+
 
   
   useEffect(() => {
@@ -190,54 +202,61 @@ export default function TimerConfirmationSheet({
           </TouchableWithoutFeedback>
 
           <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
             style={styles.keyboardContainer}
           >
-            <View style={styles.sheetContainer}>
+            <View style={[styles.sheetContainer, { maxHeight: Platform.OS === 'ios' ? '95%' : '100%' }]}>
               {Platform.OS !== 'web' && (
                 <View style={styles.handleContainer}>
                   <View style={styles.handleIndicator} />
                 </View>
               )}
 
-              <View style={styles.header}>
-                <View>
-                  <Text style={styles.title}>Lecture Finished</Text>
-                  <Text style={styles.subtitle}>Confirm details to save attendance</Text>
-                </View>
-              </View>
-
-              <View style={[styles.summaryCard, shadow.glow(timer.color)]}>
-                <View style={styles.subjectRow}>
-                  <View style={[styles.colorDot, { backgroundColor: timer.color, ...shadow.glow(timer.color) }]} />
-                  <Text style={styles.subjectName}>{timer.subjectName}</Text>
+              <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: spacing['2xl'] }}>
+                <View style={styles.header}>
+                  <View>
+                    <Text style={styles.title}>Lecture Finished</Text>
+                    <Text style={styles.subtitle}>Confirm details to save attendance</Text>
+                  </View>
                 </View>
 
-                <View style={styles.timeGrid}>
-                  <View style={styles.timeCol}>
-                    <Text style={styles.timeLabel}>STARTED (IST)</Text>
-                    <TextInput
-                      style={styles.timeInput}
-                      value={startTimeText}
-                      onChangeText={setStartTimeText}
-                      placeholder="e.g. 10:15:30 AM"
-                      placeholderTextColor={textColors.tertiary}
-                    />
-                  </View>
-                  
-                  <View style={styles.timeDivider}>
-                    <Ionicons name="arrow-forward" size={16} color={textColors.tertiary} />
+                <View style={[styles.summaryCard, shadow.glow(timer.color)]}>
+                  <View style={styles.subjectRow}>
+                    <View style={[styles.colorDot, { backgroundColor: timer.color, ...shadow.glow(timer.color) }]} />
+                    <Text style={styles.subjectName}>{timer.subjectName}</Text>
                   </View>
 
-                  <View style={[styles.timeCol, { alignItems: 'flex-end' }]}>
-                    <Text style={styles.timeLabel}>ENDED (IST)</Text>
-                    <TextInput
-                      style={[styles.timeInput, { textAlign: 'right' }]}
-                      value={endTimeText}
-                      onChangeText={setEndTimeText}
-                      placeholder="e.g. 11:30:00 AM"
-                      placeholderTextColor={textColors.tertiary}
-                    />
+                  <View style={styles.timeGrid}>
+                    <View style={styles.timeCol}>
+                      <Text style={styles.timeLabel}>STARTED (IST)</Text>
+                      <TextInput
+                        style={styles.timeInput}
+                        value={startTimeText}
+                        onChangeText={setStartTimeText}
+                        placeholder="e.g. 10:15:30 AM"
+                        placeholderTextColor={textColors.tertiary}
+                      />
+                    </View>
+                    
+                    <View style={styles.timeDivider}>
+                      <Ionicons name="arrow-forward" size={16} color={textColors.tertiary} />
+                    </View>
+
+                    <View style={[styles.timeCol, { alignItems: 'flex-end' }]}>
+                      <Text style={styles.timeLabel}>ENDED (IST)</Text>
+                      <TextInput
+                        style={[styles.timeInput, { textAlign: 'right' }]}
+                        value={endTimeText}
+                        onChangeText={setEndTimeText}
+                        placeholder="e.g. 11:30:00 AM"
+                        placeholderTextColor={textColors.tertiary}
+                      />
+                    </View>
+                  </View>
+
+                  <View style={styles.durationRow}>
+                    <Text style={styles.durationLabel}>Duration</Text>
+                    <Text style={styles.durationValue}>{durationStr}</Text>
                   </View>
                 </View>
 
@@ -288,13 +307,14 @@ export default function TimerConfirmationSheet({
                 )}
 
                 <View style={styles.formGroup}>
-                  <Text style={styles.label}>RATING /10 (OPTIONAL)</Text>
+                  <Text style={styles.label}>RATING / 10 (OPTIONAL)</Text>
                   <TextInput
-                    style={styles.timeInput}
+                    style={styles.ratingInput}
                     value={rating}
-                    onChangeText={setRating}
-                    placeholder="e.g. 8.5"
-                    keyboardType="numeric"
+                    onChangeText={handleRatingChange}
+                    placeholder="10"
+                    keyboardType="decimal-pad"
+                    maxLength={4}
                     placeholderTextColor={textColors.tertiary}
                   />
                 </View>
@@ -306,37 +326,31 @@ export default function TimerConfirmationSheet({
                   </View>
                 )}
 
-                <View style={styles.durationRow}>
-                  <Text style={styles.durationLabel}>Total Duration:</Text>
-                  <Text style={styles.durationValue}>{durationStr}</Text>
-                </View>
-              </View>
+                <Text style={styles.helperText}>
+                  Adjust the times directly in the fields above if needed.
+                  We'll validate that the format is correct and slots do not overlap.
+                </Text>
 
-              <Text style={styles.helperText}>
-                Adjust the times directly in the fields above if needed.
-                We'll validate that the format is correct and slots do not overlap.
-              </Text>
+                <View style={styles.actionRow}>
+                  <TouchableOpacity style={[styles.discardButton, isSubmitting && { opacity: 0.5 }]} activeOpacity={0.7} onPress={() => !isSubmitting && onDiscard()}>
+                    <Text style={styles.discardText}>Discard</Text>
+                  </TouchableOpacity>
 
-              <View style={styles.actionRow}>
-                <TouchableOpacity style={[styles.discardButton, isSubmitting && { opacity: 0.5 }]} activeOpacity={0.7} onPress={() => !isSubmitting && onDiscard()}>
-                  <Text style={styles.discardText}>Discard</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity 
-                  style={[styles.confirmButton, (isSubmitting || !!currentError) && { opacity: 0.4 }]} 
-                  activeOpacity={0.8} 
-                  disabled={isSubmitting || !!currentError}
-                  onPress={handleConfirm}
-                >
-                  <LinearGradient
-                    colors={[attendance.present.base, '#059669']}
-                    style={styles.confirmGradient}
+                  <TouchableOpacity 
+                    style={[styles.confirmButton, isSubmitting && { opacity: 0.5 }]} 
+                    activeOpacity={0.8} 
+                    onPress={handleConfirm}
                   >
-                    <Ionicons name="checkmark-circle" size={18} color="#fff" />
-                    <Text style={styles.confirmText}>{isSubmitting ? 'Saving...' : 'Confirm & Mark Present'}</Text>
-                  </LinearGradient>
-                </TouchableOpacity>
-              </View>
+                    <LinearGradient
+                      colors={['#059669', '#047857']}
+                      style={styles.confirmGradient}
+                    >
+                      <Ionicons name={isSubmitting ? "hourglass-outline" : "checkmark-circle"} size={20} color="#fff" />
+                      <Text style={styles.confirmText}>{isSubmitting ? 'Saving...' : 'Log Attendance'}</Text>
+                    </LinearGradient>
+                  </TouchableOpacity>
+                </View>
+              </ScrollView>
             </View>
           </KeyboardAvoidingView>
         </View>
@@ -448,6 +462,19 @@ const styles = StyleSheet.create({
     borderBottomColor: border.default,
     paddingVertical: 4,
     minWidth: 120,
+  },
+  ratingInput: {
+    fontFamily: fontFamily.bold,
+    fontSize: fontSize.lg,
+    color: textColors.primary,
+    backgroundColor: glass.medium,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
+    borderWidth: 1,
+    borderColor: border.default,
+    textAlign: 'center',
+    width: 80,
   },
   errorRow: {
     flexDirection: 'row',
