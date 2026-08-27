@@ -683,15 +683,17 @@ export default function DashboardScreen({ isActive = true }: { isActive?: boolea
         >
           <View style={styles.heroContent}>
             {/* Main Gauge */}
-            <AttendanceGauge
-              percentage={stats.overallPercentage}
-              threshold={stats.defaultThreshold}
-              size={180}
-              strokeWidth={14}
-              animated={true}
-              animationDuration={1500}
-              label="OVERALL"
-            />
+            <TouchableOpacity activeOpacity={0.8} onPress={() => DeviceEventEmitter.emit("navigate_tab", "analytics")} style={{ alignItems: 'center' }}>
+              <AttendanceGauge
+                percentage={stats.overallPercentage}
+                threshold={stats.defaultThreshold}
+                size={180}
+                strokeWidth={14}
+                animated={true}
+                animationDuration={1500}
+                label="OVERALL"
+              />
+            </TouchableOpacity>
 
             {/* Status text below gauge */}
             <View style={styles.heroStatus}>
@@ -916,27 +918,26 @@ export default function DashboardScreen({ isActive = true }: { isActive?: boolea
         </View>
       </View>
 
-      {/* ─── Today's Subjects ─── */}
+      {/* ✨ All Subjects ✨ */}
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Today's Subjects</Text>
-          <Text style={styles.sectionMeta}>{(() => { const ids = new Set(todayScheduleItems.map(i => i.subjectId)); return ids.size > 0 ? `${ids.size} scheduled` : 'No classes today'; })()}</Text>
+          <Text style={styles.sectionTitle}>Subjects</Text>
+          <Text style={styles.sectionMeta}>{subjects.length} total</Text>
         </View>
 
         <View style={styles.subjectsList}>
           {(() => {
             const todaySubjectIds = new Set(todayScheduleItems.map(i => i.subjectId));
-            const todaySubjects = subjects.filter(s => todaySubjectIds.has(s.id));
             
-            if (todaySubjects.length === 0) {
+            if (subjects.length === 0) {
               return (
                 <Text style={{ color: textColors.tertiary, padding: spacing.md, fontFamily: fontFamily.regular }}>
-                  No subjects scheduled for today.
+                  No subjects added yet.
                 </Text>
               );
             }
             
-            return todaySubjects
+            return subjects
             .sort((a, b) => {
               const aRecords = records.filter((r) => r.subject_id === a.id);
               const bRecords = records.filter((r) => r.subject_id === b.id);
@@ -954,6 +955,7 @@ export default function DashboardScreen({ isActive = true }: { isActive?: boolea
               const subjectRecords = records.filter(
                 (r) => r.subject_id === subject.id,
               );
+              
               const mappedSubject = {
                 id: subject.id,
                 name: subject.name,
@@ -966,12 +968,22 @@ export default function DashboardScreen({ isActive = true }: { isActive?: boolea
                 totalConducted: subjectRecords.filter(
                   (r) => r.status !== "cancelled",
                 ).length,
+                totalMissed: subjectRecords.filter(
+                  (r) => r.status === "absent",
+                ).length,
+                totalCancelled: subjectRecords.filter(
+                  (r) => r.status === "cancelled",
+                ).length,
               };
+
+              // Only show start timer if this subject is scheduled today
+              const isScheduledToday = todaySubjectIds.has(subject.id);
+
               return (
                 <SubjectCard
                   key={subject.id}
                   subject={mappedSubject as any}
-                  onStartTimer={handleStartTimer}
+                  onStartTimer={isScheduledToday ? handleStartTimer : undefined}
                 />
               );
             });

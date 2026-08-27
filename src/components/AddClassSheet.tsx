@@ -186,7 +186,7 @@ export default function AddClassSheet({ visible, subjects, semesters, initialSem
               </View>
             )}
 
-            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: 40 }}>
+            <ScrollView style={{ flexShrink: 1 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: 40 }}>
             <View style={styles.header}>
               <View>
                 <Text style={styles.title}>{initialData ? 'Edit Class' : 'Add Class'}</Text>

@@ -102,57 +102,17 @@ export default function TimerConfirmationSheet({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [classType, setClassType] = useState<'theory' | 'lab' | 'tutorial'>('theory');
   const [teacherName, setTeacherName] = useState<string>('');
-  const [rating, setRating] = useState<string>('');
+  const [rating, setRating] = useState<number>(0);
   const scaleAnim = useRef(new Animated.Value(1)).current;
 
-  const handleRatingChange = (text: string) => {
-    // Trigger animation
+  const handleRatingPress = (starIndex: number) => {
+    setRating(starIndex === rating ? 0 : starIndex); // Toggle off if tapping the same star
     Animated.sequence([
-      Animated.timing(scaleAnim, { toValue: 1.1, duration: 100, useNativeDriver: true }),
+      Animated.timing(scaleAnim, { toValue: 1.2, duration: 100, useNativeDriver: true }),
       Animated.timing(scaleAnim, { toValue: 1, duration: 100, useNativeDriver: true })
     ]).start();
-
-    const cleaned = text.replace(/[^0-9.]/g, '');
-    
-    // Prevent multiple decimals
-    if ((cleaned.match(/\./g) || []).length > 1) return;
-
-    if (cleaned === '') {
-      setRating('');
-      return;
-    }
-
-    // Allow trailing dot to be typed
-    if (cleaned.endsWith('.')) {
-      setRating(cleaned);
-      return;
-    }
-
-    let parsed = parseFloat(cleaned);
-    if (!isNaN(parsed)) {
-      if (parsed > 10) {
-        setRating('10');
-      } else {
-        setRating(cleaned); // Use cleaned string to preserve exact input like "8.5"
-      }
-    } else {
-      setRating('');
-    }
   };
 
-  // Determine rating color
-  let ratingColor: string = border.default;
-  let ratingBg: string = glass.medium;
-  if (rating !== '') {
-    const num = parseFloat(rating);
-    if (!isNaN(num)) {
-      if (num >= 8) { ratingColor = '#10B981'; ratingBg = 'rgba(16, 185, 129, 0.1)'; }
-      else if (num >= 5) { ratingColor = '#F59E0B'; ratingBg = 'rgba(245, 158, 11, 0.1)'; }
-      else { ratingColor = '#EF4444'; ratingBg = 'rgba(239, 68, 68, 0.1)'; }
-    }
-  }
-
-  
   useEffect(() => {
     if (visible && timer) {
       setStartTimeText(formatISTTime(new Date(timer.startTimeIso)));
@@ -215,7 +175,7 @@ export default function TimerConfirmationSheet({
     if (isSubmitting || currentError || !parsedStart || !parsedEnd) return;
     setIsSubmitting(true);
     try {
-      await onConfirm(parsedStart, parsedEnd, classType, teacherName, rating ? parseFloat(rating) : null);
+      await onConfirm(parsedStart, parsedEnd, classType, teacherName, rating > 0 ? rating : null);
     } catch (e) {
       console.error(e);
     } finally {
@@ -249,7 +209,7 @@ export default function TimerConfirmationSheet({
                 </View>
               )}
 
-              <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: spacing['2xl'] }}>
+              <ScrollView style={{ flexShrink: 1 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: spacing['2xl'] }}>
                 <View style={styles.header}>
                   <View>
                     <Text style={styles.title}>Lecture Finished</Text>
@@ -270,7 +230,7 @@ export default function TimerConfirmationSheet({
                         style={styles.timeInput}
                         value={startTimeText}
                         onChangeText={setStartTimeText}
-                        placeholder="e.g. 10:15:30 AM"
+                        placeholder="e.g. 10:15:00 AM"
                         placeholderTextColor={textColors.tertiary}
                       />
                     </View>
@@ -285,97 +245,100 @@ export default function TimerConfirmationSheet({
                         style={[styles.timeInput, { textAlign: 'right' }]}
                         value={endTimeText}
                         onChangeText={setEndTimeText}
-                        placeholder="e.g. 11:30:00 AM"
+                        placeholder="e.g. 11:15:00 AM"
                         placeholderTextColor={textColors.tertiary}
                       />
                     </View>
                   </View>
 
-                  <View style={styles.durationRow}>
-                    <Text style={styles.durationLabel}>Duration</Text>
-                    <Text style={styles.durationValue}>{durationStr}</Text>
-                  </View>
-                </View>
+                  {currentError && (
+                    <View style={styles.errorRow}>
+                      <Ionicons name="warning-outline" size={14} color="#EF4444" />
+                      <Text style={styles.errorText}>{currentError}</Text>
+                    </View>
+                  )}
 
-                <View style={styles.formGroup}>
-                  <Text style={styles.label}>CLASS TYPE</Text>
-                  <View style={styles.segmentedControl}>
-                    {(['theory', 'lab', 'tutorial'] as const).map(type => (
-                      <TouchableOpacity
-                        key={type}
-                        style={[styles.segmentBtn, classType === type && styles.segmentBtnActive]}
-                        onPress={() => setClassType(type)}
-                      >
-                        <Text style={[styles.segmentText, classType === type && styles.segmentTextActive]}>
-                          {type === 'theory' ? 'Theory' : type === 'lab' ? 'Lab' : 'Tutorial'}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                </View>
-
-                {subject?.teachers?.length > 0 && (
-                  <View style={styles.formGroup}>
-                    <Text style={styles.label}>TEACHER (OPTIONAL)</Text>
-                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.xs }}>
-                      {subject.teachers.map((t: string) => {
-                        let display = t;
-                        try {
-                          if (t.startsWith('{')) {
-                            const obj = JSON.parse(t);
-                            display = `${obj.n} (${obj.s})`;
-                          }
-                        } catch(e) {}
-                        return (
-                          <TouchableOpacity
-                            key={t}
-                            style={[
-                              { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, borderWidth: 1, borderColor: border.default },
-                              teacherName === t && { backgroundColor: accent.primary, borderColor: accent.primary }
-                            ]}
-                            onPress={() => setTeacherName(teacherName === t ? '' : t)}
-                          >
-                            <Text style={[{ fontSize: 12, color: textColors.secondary }, teacherName === t && { color: '#fff' }]}>{display}</Text>
-                          </TouchableOpacity>
-                        );
-                      })}
+                  <View style={styles.durationBadge}>
+                    <Ionicons name="time" size={16} color={textColors.secondary} />
+                    <View>
+                      <Text style={styles.durationLabel}>Duration</Text>
+                      <Text style={styles.durationValue}>{durationStr}</Text>
                     </View>
                   </View>
-                )}
-
-                <View style={styles.formGroup}>
-                  <Text style={styles.label}>RATING / 10 (OPTIONAL)</Text>
-                  <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
-                    <TextInput
-                      style={[
-                        styles.ratingInput,
-                        {
-                          borderColor: ratingColor,
-                          backgroundColor: ratingBg,
-                          color: ratingColor === border.default ? textColors.primary : ratingColor,
-                        }
-                      ]}
-                      value={rating}
-                      onChangeText={handleRatingChange}
-                      placeholder="10"
-                      keyboardType="decimal-pad"
-                      maxLength={4}
-                      placeholderTextColor={textColors.tertiary}
-                    />
-                  </Animated.View>
                 </View>
 
-                {currentError && (
-                  <View style={styles.errorRow}>
-                    <Ionicons name="warning-outline" size={14} color="#EF4444" />
-                    <Text style={styles.errorText}>{currentError}</Text>
+                <View style={styles.form}>
+                  <View style={styles.formGroup}>
+                    <Text style={styles.label}>CLASS TYPE</Text>
+                    <View style={styles.segmentedControl}>
+                      {(['theory', 'lab', 'tutorial'] as const).map(type => (
+                        <TouchableOpacity
+                          key={type}
+                          style={[styles.segmentBtn, classType === type && styles.segmentBtnActive]}
+                          onPress={() => setClassType(type)}
+                        >
+                          <Text style={[styles.segmentText, classType === type && styles.segmentTextActive]}>
+                            {type.charAt(0).toUpperCase() + type.slice(1)}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
                   </View>
-                )}
 
-                <Text style={styles.helperText}>
-                  Adjust the times directly in the fields above if needed.
-                  We'll validate that the format is correct and slots do not overlap.
-                </Text>
+                  {subject && subject.teachers && subject.teachers.length > 0 && (
+                    <View style={styles.formGroup}>
+                      <Text style={styles.label}>TEACHER</Text>
+                      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm }}>
+                        {subject.teachers.map((t: string) => {
+                          let display = t;
+                          try {
+                            if (t.startsWith('{')) {
+                              const obj = JSON.parse(t);
+                              display = `${obj.n} (${obj.s})`;
+                            }
+                          } catch(e) {}
+                          return (
+                            <TouchableOpacity
+                              key={t}
+                              style={[
+                                { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, borderWidth: 1, borderColor: border.default },
+                                teacherName === t && { backgroundColor: accent.primary, borderColor: accent.primary }
+                              ]}
+                              onPress={() => setTeacherName(teacherName === t ? '' : t)}
+                            >
+                              <Text style={[{ fontSize: 12, color: textColors.secondary }, teacherName === t && { color: '#fff' }]}>{display}</Text>
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </View>
+                    </View>
+                  )}
+
+                  <View style={styles.formGroup}>
+                    <Text style={styles.label}>RATING (OPTIONAL)</Text>
+                    <Animated.View style={{ flexDirection: 'row', gap: spacing.md, transform: [{ scale: scaleAnim }], justifyContent: 'center', marginVertical: spacing.sm }}>
+                      {[1, 2, 3, 4, 5].map((star) => (
+                        <TouchableOpacity 
+                          key={star} 
+                          onPress={() => handleRatingPress(star)} 
+                          activeOpacity={0.7} 
+                          style={{ padding: spacing.xs }}
+                        >
+                          <Ionicons 
+                            name={rating >= star ? "star" : "star-outline"} 
+                            size={36} 
+                            color={rating >= star ? (rating >= 4 ? '#10B981' : rating >= 3 ? '#F59E0B' : '#EF4444') : textColors.tertiary} 
+                          />
+                        </TouchableOpacity>
+                      ))}
+                    </Animated.View>
+                  </View>
+
+                  <Text style={styles.helperText}>
+                    Adjust the times directly in the fields above if needed.
+                    We'll validate that the format is correct and slots do not overlap.
+                  </Text>
+                </View>
 
                 </ScrollView>
 
@@ -541,19 +504,37 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: glass.medium,
-    padding: spacing.md,
-    borderRadius: radius.md,
+    marginTop: spacing.md,
+    paddingTop: spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: border.subtle,
+  },
+  durationBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginTop: spacing.md,
+    paddingTop: spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: border.subtle,
   },
   durationLabel: {
     fontFamily: fontFamily.medium,
-    fontSize: fontSize.sm,
-    color: textColors.secondary,
+    fontSize: 10,
+    color: textColors.tertiary,
+    textTransform: 'uppercase',
   },
   durationValue: {
-    fontFamily: fontFamily.bold,
     fontSize: fontSize.md,
     color: textColors.primary,
+    fontFamily: fontFamily.bold,
+  },
+  form: {
+    paddingHorizontal: spacing.md,
+  },
+  formGroup: {
+    gap: spacing.sm,
+    marginBottom: spacing.lg,
   },
   helperText: {
     fontFamily: fontFamily.regular,
@@ -628,10 +609,7 @@ const styles = StyleSheet.create({
     color: textColors.primary,
     fontFamily: fontFamily.bold,
   },
-  formGroup: {
-    gap: spacing.sm,
-    marginBottom: spacing.lg,
-  },
+
   label: {
     fontFamily: fontFamily.bold,
     fontSize: 10,

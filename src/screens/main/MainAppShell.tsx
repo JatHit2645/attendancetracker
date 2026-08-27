@@ -11,7 +11,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { View, StyleSheet } from 'react-native';
+import { View, StyleSheet, DeviceEventEmitter } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import BottomTabBar, { TabName } from '../../components/BottomTabBar';
 import DashboardScreen from './DashboardScreen';
@@ -25,6 +25,13 @@ import { DatabaseService } from '../../services/DatabaseService';
 
 export default function MainAppShell() {
   const [activeTab, setActiveTab] = useState<TabName>('dashboard');
+
+  useEffect(() => {
+    const sub = DeviceEventEmitter.addListener('navigate_tab', (tab: TabName) => {
+      setActiveTab(tab);
+    });
+    return () => sub.remove();
+  }, []);
 
   useEffect(() => {
     const checkAndInitializeUser = async () => {
