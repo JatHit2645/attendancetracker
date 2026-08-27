@@ -1,4 +1,4 @@
-﻿import React, { useState, useMemo, useEffect, useRef } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -54,7 +54,7 @@ const AnimatedSubjectCard = ({ stat, index }: { stat: any, index: number }) => {
         colors={[stat.color + '10', canvas.elevated]}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
-        style={[styles.subjectCard, shadow.md, { borderLeftColor: stat.color, borderLeftWidth: 4 }]}
+        style={[styles.subjectCard, shadow.medium, { borderLeftColor: stat.color, borderLeftWidth: 4 }]}
       >
         <View style={styles.cardMain}>
           <View style={styles.subjectInfo}>
