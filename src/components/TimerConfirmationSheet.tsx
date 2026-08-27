@@ -105,10 +105,28 @@ export default function TimerConfirmationSheet({
 
   const handleRatingChange = (text: string) => {
     const cleaned = text.replace(/[^0-9.]/g, '');
+    
+    // Prevent multiple decimals
+    if ((cleaned.match(/\./g) || []).length > 1) return;
+
+    if (cleaned === '') {
+      setRating('');
+      return;
+    }
+
+    // Allow trailing dot to be typed
+    if (cleaned.endsWith('.')) {
+      setRating(cleaned);
+      return;
+    }
+
     let parsed = parseFloat(cleaned);
     if (!isNaN(parsed)) {
-      if (parsed > 10) parsed = 10;
-      setRating(parsed.toString());
+      if (parsed > 10) {
+        setRating('10');
+      } else {
+        setRating(cleaned); // Use cleaned string to preserve exact input like "8.5"
+      }
     } else {
       setRating('');
     }
