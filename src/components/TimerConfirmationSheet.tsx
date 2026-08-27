@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -11,6 +11,7 @@ import {
   TextInput,
   Keyboard,
   ScrollView,
+  Animated,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
@@ -102,8 +103,15 @@ export default function TimerConfirmationSheet({
   const [classType, setClassType] = useState<'theory' | 'lab' | 'tutorial'>('theory');
   const [teacherName, setTeacherName] = useState<string>('');
   const [rating, setRating] = useState<string>('');
+  const scaleAnim = useRef(new Animated.Value(1)).current;
 
   const handleRatingChange = (text: string) => {
+    // Trigger animation
+    Animated.sequence([
+      Animated.timing(scaleAnim, { toValue: 1.1, duration: 100, useNativeDriver: true }),
+      Animated.timing(scaleAnim, { toValue: 1, duration: 100, useNativeDriver: true })
+    ]).start();
+
     const cleaned = text.replace(/[^0-9.]/g, '');
     
     // Prevent multiple decimals
@@ -132,6 +140,17 @@ export default function TimerConfirmationSheet({
     }
   };
 
+  // Determine rating color
+  let ratingColor: string = border.default;
+  let ratingBg: string = glass.medium;
+  if (rating !== '') {
+    const num = parseFloat(rating);
+    if (!isNaN(num)) {
+      if (num >= 8) { ratingColor = '#10B981'; ratingBg = 'rgba(16, 185, 129, 0.1)'; }
+      else if (num >= 5) { ratingColor = '#F59E0B'; ratingBg = 'rgba(245, 158, 11, 0.1)'; }
+      else { ratingColor = '#EF4444'; ratingBg = 'rgba(239, 68, 68, 0.1)'; }
+    }
+  }
 
   
   useEffect(() => {
@@ -220,7 +239,7 @@ export default function TimerConfirmationSheet({
           </TouchableWithoutFeedback>
 
           <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            behavior="padding"
             style={styles.keyboardContainer}
           >
             <View style={[styles.sheetContainer, { maxHeight: '85%' }]}>
@@ -326,15 +345,24 @@ export default function TimerConfirmationSheet({
 
                 <View style={styles.formGroup}>
                   <Text style={styles.label}>RATING / 10 (OPTIONAL)</Text>
-                  <TextInput
-                    style={styles.ratingInput}
-                    value={rating}
-                    onChangeText={handleRatingChange}
-                    placeholder="10"
-                    keyboardType="decimal-pad"
-                    maxLength={4}
-                    placeholderTextColor={textColors.tertiary}
-                  />
+                  <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
+                    <TextInput
+                      style={[
+                        styles.ratingInput,
+                        {
+                          borderColor: ratingColor,
+                          backgroundColor: ratingBg,
+                          color: ratingColor === border.default ? textColors.primary : ratingColor,
+                        }
+                      ]}
+                      value={rating}
+                      onChangeText={handleRatingChange}
+                      placeholder="10"
+                      keyboardType="decimal-pad"
+                      maxLength={4}
+                      placeholderTextColor={textColors.tertiary}
+                    />
+                  </Animated.View>
                 </View>
 
                 {currentError && (
@@ -349,7 +377,9 @@ export default function TimerConfirmationSheet({
                   We'll validate that the format is correct and slots do not overlap.
                 </Text>
 
-                <View style={styles.actionRow}>
+                </ScrollView>
+
+                <View style={[styles.actionRow, { paddingTop: spacing.md, borderTopWidth: 1, borderTopColor: border.subtle, backgroundColor: canvas.elevated }]}>
                   <TouchableOpacity style={[styles.discardButton, isSubmitting && { opacity: 0.5 }]} activeOpacity={0.7} onPress={() => !isSubmitting && onDiscard()}>
                     <Text style={styles.discardText}>Discard</Text>
                   </TouchableOpacity>
@@ -368,8 +398,7 @@ export default function TimerConfirmationSheet({
                     </LinearGradient>
                   </TouchableOpacity>
                 </View>
-              </ScrollView>
-            </View>
+              </View>
           </KeyboardAvoidingView>
         </View>
       </TouchableWithoutFeedback>

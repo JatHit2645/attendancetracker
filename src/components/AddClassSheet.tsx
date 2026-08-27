@@ -176,7 +176,7 @@ export default function AddClassSheet({ visible, subjects, semesters, initialSem
         </TouchableWithoutFeedback>
 
         <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          behavior="padding"
           style={styles.keyboardContainer}
         >
           <View style={[styles.sheetContainer, { maxHeight: '85%' }]}>
@@ -333,25 +333,25 @@ export default function AddClassSheet({ visible, subjects, semesters, initialSem
                 Enter times in 24-hour format (HH:MM).
               </Text>
             </View>
-
-            <View style={styles.footer}>
-              <TouchableOpacity style={[styles.saveButton, initialData && { flex: 1 }]} onPress={handleSave} activeOpacity={0.8}>
-                <LinearGradient colors={[accent.primary, accent.primaryHover]} style={styles.saveButtonGradient}>
-                  <Text style={styles.saveButtonText}>{initialData ? 'Save Changes' : 'Add to Timetable'}</Text>
-                </LinearGradient>
-              </TouchableOpacity>
-              
-              {initialData && onDelete && (
-                <TouchableOpacity
-                  style={styles.deleteButton}
-                  onPress={() => onDelete()}
-                  activeOpacity={0.8}
-                >
-                  <Ionicons name="trash-outline" size={20} color={'#DC2626'} />
-                </TouchableOpacity>
-              )}
-              </View>
             </ScrollView>
+
+              <View style={[styles.footer, { paddingBottom: 20, paddingTop: 10, borderTopWidth: 1, borderTopColor: border.subtle, backgroundColor: canvas.elevated }]}>
+                <TouchableOpacity style={[styles.saveButton, initialData && { flex: 1 }]} onPress={handleSave} activeOpacity={0.8}>
+                  <LinearGradient colors={[accent.primary, accent.primaryHover]} style={styles.saveButtonGradient}>
+                    <Text style={styles.saveButtonText}>{initialData ? 'Save Changes' : 'Add to Timetable'}</Text>
+                  </LinearGradient>
+                </TouchableOpacity>
+                
+                {initialData && onDelete && (
+                  <TouchableOpacity
+                    style={styles.deleteButton}
+                    onPress={() => onDelete()}
+                    activeOpacity={0.8}
+                  >
+                    <Ionicons name="trash-outline" size={20} color={'#DC2626'} />
+                  </TouchableOpacity>
+                )}
+                </View>
           </View>
         </KeyboardAvoidingView>
       </View>
