@@ -144,9 +144,23 @@ export default function TimerConfirmationSheet({
   if (rating !== '') {
     const num = parseFloat(rating);
     if (!isNaN(num)) {
-      if (num >= 8) { ratingColor = '#10B981'; ratingBg = 'rgba(16, 185, 129, 0.1)'; }
-      else if (num >= 5) { ratingColor = '#F59E0B'; ratingBg = 'rgba(245, 158, 11, 0.1)'; }
-      else { ratingColor = '#EF4444'; ratingBg = 'rgba(239, 68, 68, 0.1)'; }
+      const clamped = Math.max(0, Math.min(10, num));
+      let r, g, b;
+      if (clamped <= 5) {
+        // Red (#EF4444) to Yellow (#F59E0B)
+        const t = clamped / 5;
+        r = Math.round(239 + t * (245 - 239));
+        g = Math.round(68 + t * (158 - 68));
+        b = Math.round(68 + t * (11 - 68));
+      } else {
+        // Yellow (#F59E0B) to Green (#10B981)
+        const t = (clamped - 5) / 5;
+        r = Math.round(245 + t * (16 - 245));
+        g = Math.round(158 + t * (185 - 158));
+        b = Math.round(11 + t * (129 - 11));
+      }
+      ratingColor = `rgb(${r}, ${g}, ${b})`;
+      ratingBg = `rgba(${r}, ${g}, ${b}, 0.15)`;
     }
   }
 
@@ -627,9 +641,9 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.md,
     paddingHorizontal: spacing.md,
     borderRadius: radius.md,
-    backgroundColor: 'rgba(245, 158, 11, 0.1)', // Amber background
+    backgroundColor: 'rgba(139, 92, 246, 0.1)', // Purple background
     borderWidth: 1,
-    borderColor: 'rgba(245, 158, 11, 0.3)',
+    borderColor: 'rgba(139, 92, 246, 0.3)',
     alignItems: 'center',
     justifyContent: 'center',
     flex: 1,
@@ -657,7 +671,7 @@ const styles = StyleSheet.create({
   cancelText: {
     fontFamily: fontFamily.bold,
     fontSize: fontSize.sm,
-    color: '#F59E0B',
+    color: '#8B5CF6',
   },
   discardText: {
     fontFamily: fontFamily.bold,
