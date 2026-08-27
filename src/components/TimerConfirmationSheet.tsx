@@ -36,6 +36,7 @@ interface TimerConfirmationSheetProps {
   subject?: any; // Add subject prop to fetch default teachers
   onConfirm: (start: Date, end: Date, classType: string, teacherName: string, rating: number | null) => Promise<void> | void;
   onDiscard: () => void;
+  onCancel: () => void;
 }
 
 const formatISTTime = (date: Date) => {
@@ -96,22 +97,58 @@ export default function TimerConfirmationSheet({
   subject,
   onConfirm,
   onDiscard,
+  onCancel,
 }: TimerConfirmationSheetProps) {
   const [startTimeText, setStartTimeText] = useState('');
   const [endTimeText, setEndTimeText] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [classType, setClassType] = useState<'theory' | 'lab' | 'tutorial'>('theory');
   const [teacherName, setTeacherName] = useState<string>('');
-  const [rating, setRating] = useState<number>(0);
+  const [rating, setRating] = useState<string>('');
   const scaleAnim = useRef(new Animated.Value(1)).current;
 
-  const handleRatingPress = (starIndex: number) => {
-    setRating(starIndex === rating ? 0 : starIndex); // Toggle off if tapping the same star
+  const handleRatingChange = (text: string) => {
     Animated.sequence([
-      Animated.timing(scaleAnim, { toValue: 1.2, duration: 100, useNativeDriver: true }),
+      Animated.timing(scaleAnim, { toValue: 1.1, duration: 100, useNativeDriver: true }),
       Animated.timing(scaleAnim, { toValue: 1, duration: 100, useNativeDriver: true })
     ]).start();
+
+    const cleaned = text.replace(/[^0-9.]/g, '');
+    if ((cleaned.match(/\./g) || []).length > 1) return;
+
+    if (cleaned === '') {
+      setRating('');
+      return;
+    }
+
+    if (cleaned.endsWith('.')) {
+      setRating(cleaned);
+      return;
+    }
+
+    let parsed = parseFloat(cleaned);
+    if (!isNaN(parsed)) {
+      if (parsed > 10) {
+        setRating('10');
+      } else {
+        setRating(cleaned);
+      }
+    } else {
+      setRating('');
+    }
   };
+
+  // Determine rating color
+  let ratingColor: string = border.default;
+  let ratingBg: string = glass.medium;
+  if (rating !== '') {
+    const num = parseFloat(rating);
+    if (!isNaN(num)) {
+      if (num >= 8) { ratingColor = '#10B981'; ratingBg = 'rgba(16, 185, 129, 0.1)'; }
+      else if (num >= 5) { ratingColor = '#F59E0B'; ratingBg = 'rgba(245, 158, 11, 0.1)'; }
+      else { ratingColor = '#EF4444'; ratingBg = 'rgba(239, 68, 68, 0.1)'; }
+    }
+  }
 
   useEffect(() => {
     if (visible && timer) {
@@ -175,7 +212,7 @@ export default function TimerConfirmationSheet({
     if (isSubmitting || currentError || !parsedStart || !parsedEnd) return;
     setIsSubmitting(true);
     try {
-      await onConfirm(parsedStart, parsedEnd, classType, teacherName, rating > 0 ? rating : null);
+      await onConfirm(parsedStart, parsedEnd, classType, teacherName, rating ? parseFloat(rating) : null);
     } catch (e) {
       console.error(e);
     } finally {
@@ -190,26 +227,25 @@ export default function TimerConfirmationSheet({
       animationType={Platform.OS === 'web' ? 'fade' : 'slide'}
       onRequestClose={() => !isSubmitting && onDiscard()}
     >
-      <TouchableWithoutFeedback onPress={() => Keyboard.dismiss()}>
-        <View style={styles.overlay}>
-          <TouchableWithoutFeedback onPress={() => !isSubmitting && onDiscard()}>
-            <View style={styles.backdrop}>
-              <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.7)' }]} />
-            </View>
-          </TouchableWithoutFeedback>
+      <View style={styles.overlay}>
+        <TouchableWithoutFeedback onPress={() => !isSubmitting && onDiscard()}>
+          <View style={styles.backdrop}>
+            <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.7)' }]} />
+          </View>
+        </TouchableWithoutFeedback>
 
-          <KeyboardAvoidingView
-            behavior="padding"
-            style={styles.keyboardContainer}
-          >
-            <View style={[styles.sheetContainer, { maxHeight: '85%' }]}>
-              {Platform.OS !== 'web' && (
-                <View style={styles.handleContainer}>
-                  <View style={styles.handleIndicator} />
-                </View>
-              )}
+        <KeyboardAvoidingView
+          behavior="padding"
+          style={styles.keyboardContainer}
+        >
+          <View style={[styles.sheetContainer, { maxHeight: '85%' }]}>
+            {Platform.OS !== 'web' && (
+              <View style={styles.handleContainer}>
+                <View style={styles.handleIndicator} />
+              </View>
+            )}
 
-              <ScrollView style={{ flexShrink: 1 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: spacing['2xl'] }}>
+            <ScrollView style={{ flexShrink: 1 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: spacing['2xl'] }}>
                 <View style={styles.header}>
                   <View>
                     <Text style={styles.title}>Lecture Finished</Text>
@@ -315,22 +351,24 @@ export default function TimerConfirmationSheet({
                   )}
 
                   <View style={styles.formGroup}>
-                    <Text style={styles.label}>RATING (OPTIONAL)</Text>
-                    <Animated.View style={{ flexDirection: 'row', gap: spacing.md, transform: [{ scale: scaleAnim }], justifyContent: 'center', marginVertical: spacing.sm }}>
-                      {[1, 2, 3, 4, 5].map((star) => (
-                        <TouchableOpacity 
-                          key={star} 
-                          onPress={() => handleRatingPress(star)} 
-                          activeOpacity={0.7} 
-                          style={{ padding: spacing.xs }}
-                        >
-                          <Ionicons 
-                            name={rating >= star ? "star" : "star-outline"} 
-                            size={36} 
-                            color={rating >= star ? (rating >= 4 ? '#10B981' : rating >= 3 ? '#F59E0B' : '#EF4444') : textColors.tertiary} 
-                          />
-                        </TouchableOpacity>
-                      ))}
+                    <Text style={styles.label}>RATING / 10 (OPTIONAL)</Text>
+                    <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
+                      <TextInput
+                        style={[
+                          styles.ratingInput,
+                          {
+                            borderColor: ratingColor,
+                            backgroundColor: ratingBg,
+                            color: ratingColor === border.default ? textColors.primary : ratingColor,
+                          }
+                        ]}
+                        value={rating}
+                        onChangeText={handleRatingChange}
+                        placeholder="10"
+                        keyboardType="decimal-pad"
+                        maxLength={4}
+                        placeholderTextColor={textColors.tertiary}
+                      />
                     </Animated.View>
                   </View>
 
@@ -340,31 +378,31 @@ export default function TimerConfirmationSheet({
                   </Text>
                 </View>
 
-                </ScrollView>
+              </ScrollView>
 
-                <View style={[styles.actionRow, { paddingTop: spacing.md, borderTopWidth: 1, borderTopColor: border.subtle, backgroundColor: canvas.elevated }]}>
-                  <TouchableOpacity style={[styles.discardButton, isSubmitting && { opacity: 0.5 }]} activeOpacity={0.7} onPress={() => !isSubmitting && onDiscard()}>
-                    <Text style={styles.discardText}>Discard</Text>
-                  </TouchableOpacity>
+              <View style={[styles.actionRow, { padding: spacing.md, borderTopWidth: 1, borderTopColor: border.subtle, backgroundColor: canvas.elevated }]}>
+                <TouchableOpacity style={[styles.cancelBtn, isSubmitting && { opacity: 0.5 }]} activeOpacity={0.7} onPress={() => !isSubmitting && onCancel()}>
+                  <Text style={styles.cancelText}>Cancel</Text>
+                </TouchableOpacity>
 
-                  <TouchableOpacity 
-                    style={[styles.confirmButton, isSubmitting && { opacity: 0.5 }]} 
-                    activeOpacity={0.8} 
-                    onPress={handleConfirm}
-                  >
-                    <LinearGradient
-                      colors={['#059669', '#047857']}
-                      style={styles.confirmGradient}
-                    >
-                      <Ionicons name={isSubmitting ? "hourglass-outline" : "checkmark-circle"} size={20} color="#fff" />
-                      <Text style={styles.confirmText}>{isSubmitting ? 'Saving...' : 'Log Attendance'}</Text>
-                    </LinearGradient>
-                  </TouchableOpacity>
-                </View>
+                <TouchableOpacity style={[styles.discardBtn, isSubmitting && { opacity: 0.5 }]} activeOpacity={0.7} onPress={() => !isSubmitting && onDiscard()}>
+                  <Text style={styles.discardText}>Discard</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity 
+                  style={[styles.saveBtn, isSubmitting && { opacity: 0.5 }, currentError ? { opacity: 0.5, backgroundColor: glass.medium } : {}]} 
+                  activeOpacity={0.7} 
+                  onPress={handleConfirm}
+                  disabled={isSubmitting || !!currentError}
+                >
+                  <Text style={[styles.saveText, currentError ? { color: textColors.tertiary } : {}]}>
+                    {isSubmitting ? 'Saving...' : 'Save'}
+                  </Text>
+                </TouchableOpacity>
               </View>
+            </View>
           </KeyboardAvoidingView>
-        </View>
-      </TouchableWithoutFeedback>
+      </View>
     </Modal>
   );
 }
@@ -543,47 +581,7 @@ const styles = StyleSheet.create({
     marginBottom: spacing.xl,
     lineHeight: 18,
   },
-  actionRow: {
-    flexDirection: 'row',
-    gap: spacing.md,
-  },
-  discardButton: {
-    flex: 1,
-    paddingVertical: spacing.md + 4,
-    paddingHorizontal: spacing.lg,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    borderColor: border.default,
-    backgroundColor: glass.light,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  discardText: {
-    fontFamily: fontFamily.semiBold,
-    fontSize: fontSize.base,
-    color: textColors.secondary,
-  },
-  confirmButton: {
-    flex: 2,
-    borderRadius: radius.lg,
-    overflow: 'hidden',
-    ...shadow.glow('#059669'),
-  },
-  confirmGradient: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: spacing.md + 4,
-    paddingHorizontal: spacing.lg,
-    gap: spacing.sm,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.15)',
-  },
-  confirmText: {
-    fontFamily: fontFamily.bold,
-    fontSize: fontSize.base,
-    color: '#fff',
-  },
+
   segmentedControl: {
     flexDirection: "row",
     backgroundColor: glass.medium,
@@ -615,5 +613,59 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: textColors.tertiary,
     letterSpacing: 1.5,
+  },
+  actionRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    padding: spacing.md,
+    paddingTop: spacing.lg,
+    borderTopWidth: 1,
+    borderTopColor: border.subtle,
+    backgroundColor: canvas.elevated,
+  },
+  cancelBtn: {
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: border.default,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flex: 1,
+  },
+  discardBtn: {
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.md,
+    backgroundColor: 'rgba(239, 68, 68, 0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(239, 68, 68, 0.3)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flex: 1,
+  },
+  saveBtn: {
+    backgroundColor: accent.primary,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flex: 1.5,
+  },
+  cancelText: {
+    fontFamily: fontFamily.bold,
+    fontSize: fontSize.sm,
+    color: textColors.primary,
+  },
+  discardText: {
+    fontFamily: fontFamily.bold,
+    fontSize: fontSize.sm,
+    color: '#EF4444',
+  },
+  saveText: {
+    fontFamily: fontFamily.bold,
+    fontSize: fontSize.sm,
+    color: '#000000',
   },
 });

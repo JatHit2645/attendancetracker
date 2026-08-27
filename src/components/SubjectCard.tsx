@@ -40,6 +40,7 @@ interface SubjectCardProps {
   subject: Subject;
   onPress?: () => void;
   onStartTimer?: (subject: Subject) => void;
+  showStartTimer?: boolean;
 }
 
 function getStatusLabel(
@@ -76,6 +77,7 @@ export default React.memo(function SubjectCard({
   subject,
   onPress,
   onStartTimer,
+  showStartTimer,
 }: SubjectCardProps) {
   const percentage = calculatePercentage(
     subject.totalAttended,
@@ -105,6 +107,9 @@ export default React.memo(function SubjectCard({
     if (needed > 0)
       helperText = `Need ${needed} more to reach ${subject.threshold}%`;
   }
+
+  // Use explicit boolean if provided, otherwise fallback to whether function exists
+  const shouldShowTimer = showStartTimer !== undefined ? showStartTimer : !!onStartTimer;
 
   return (
     <View
@@ -177,7 +182,7 @@ export default React.memo(function SubjectCard({
         </View>
       </TouchableOpacity>
 
-      {onStartTimer && (
+      {shouldShowTimer && onStartTimer && (
         <TouchableOpacity hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} 
           style={[styles.timerButton, { backgroundColor: subjectColor + "20" }]}
           activeOpacity={0.7}

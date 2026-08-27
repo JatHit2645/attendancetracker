@@ -30,6 +30,7 @@ import QuickStatsBar from "../../components/QuickStatsBar";
 import StopwatchTimerBanner from "../../components/StopwatchTimerBanner";
 import TimerConfirmationSheet from "../../components/TimerConfirmationSheet";
 import SemesterSwitchSheet from "../../components/SemesterSwitchSheet";
+import ExpandedAttendanceSheet from "../../components/ExpandedAttendanceSheet";
 import { TimerService, TimerState } from "../../services/TimerService";
 import {
   canvas,
@@ -88,6 +89,7 @@ export default function DashboardScreen({ isActive = true }: { isActive?: boolea
   const [activeTimer, setActiveTimer] = useState<TimerState | null>(null);
   const [showConfirmSheet, setShowConfirmSheet] = useState(false);
   const [semesterSheetVisible, setSemesterSheetVisible] = useState(false);
+  const [expandedAttendanceVisible, setExpandedAttendanceVisible] = useState(false);
 
   const [selectedDate, setSelectedDate] = useState(() => 
     new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" })
@@ -274,10 +276,15 @@ export default function DashboardScreen({ isActive = true }: { isActive?: boolea
     setShowConfirmSheet(false);
   }, [activeTimer, loadData, selectedDate, pendingStatus, pendingItem]);
 
-  const handleDiscardTimer = React.useCallback(() => {
+  const handleDiscardTimer = React.useCallback(async () => {
+    await TimerService.clearTimer();
     setActiveTimer(null);
     setPendingStatus(null);
     setPendingItem(null);
+    setShowConfirmSheet(false);
+  }, []);
+
+  const handleCancelTimer = React.useCallback(() => {
     setShowConfirmSheet(false);
   }, []);
 
@@ -665,12 +672,20 @@ export default function DashboardScreen({ isActive = true }: { isActive?: boolea
         records={records}
         onConfirm={handleConfirmTimer}
         onDiscard={handleDiscardTimer}
+        onCancel={handleCancelTimer}
       />
 
       <SemesterSwitchSheet
         visible={semesterSheetVisible}
         onClose={() => setSemesterSheetVisible(false)}
         onSwitch={loadData}
+      />
+
+      <ExpandedAttendanceSheet
+        visible={expandedAttendanceVisible}
+        onClose={() => setExpandedAttendanceVisible(false)}
+        subjects={subjects}
+        records={records}
       />
 
       {/* ─── Hero Gauge Section ─── */}
@@ -683,7 +698,7 @@ export default function DashboardScreen({ isActive = true }: { isActive?: boolea
         >
           <View style={styles.heroContent}>
             {/* Main Gauge */}
-            <TouchableOpacity activeOpacity={0.8} onPress={() => DeviceEventEmitter.emit("navigate_tab", "analytics")} style={{ alignItems: 'center' }}>
+            <TouchableOpacity activeOpacity={0.8} onPress={() => setExpandedAttendanceVisible(true)} style={{ alignItems: 'center' }}>
               <AttendanceGauge
                 percentage={stats.overallPercentage}
                 threshold={stats.defaultThreshold}
@@ -983,7 +998,8 @@ export default function DashboardScreen({ isActive = true }: { isActive?: boolea
                 <SubjectCard
                   key={subject.id}
                   subject={mappedSubject as any}
-                  onStartTimer={isScheduledToday ? handleStartTimer : undefined}
+                  onStartTimer={handleStartTimer}
+                  showStartTimer={isScheduledToday}
                 />
               );
             });
