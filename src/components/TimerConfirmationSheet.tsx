@@ -36,11 +36,13 @@ interface TimerConfirmationSheetProps {
   onDiscard: () => void;
 }
 
-const format24Time = (date: Date) => {
+const formatISTTime = (date: Date) => {
   return date.toLocaleTimeString('en-US', {
-    hour: '2-digit',
+    timeZone: 'Asia/Kolkata',
+    hour: 'numeric',
     minute: '2-digit',
-    hour12: false,
+    second: '2-digit',
+    hour12: true,
   });
 };
 
@@ -48,16 +50,37 @@ const parseTimeText = (text: string, baseDate: Date): Date | null => {
   if (!text) return null;
   const cleaned = text.trim();
   
-  const match24 = cleaned.match(/^(\d{1,2}):(\d{2})$/);
+  const match12 = cleaned.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(AM|PM)$/i);
+  if (match12) {
+    let hours = parseInt(match12[1], 10);
+    const minutes = parseInt(match12[2], 10);
+    const seconds = match12[3] ? parseInt(match12[3], 10) : 0;
+    const ampm = match12[4].toUpperCase();
+
+    if (hours < 1 || hours > 12) return null;
+    if (minutes < 0 || minutes > 59) return null;
+    if (seconds < 0 || seconds > 59) return null;
+
+    if (ampm === 'PM' && hours < 12) hours += 12;
+    if (ampm === 'AM' && hours === 12) hours = 0;
+
+    const newDate = new Date(baseDate);
+    newDate.setHours(hours, minutes, seconds, 0);
+    return newDate;
+  }
+
+  const match24 = cleaned.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
   if (match24) {
     const hours = parseInt(match24[1], 10);
     const minutes = parseInt(match24[2], 10);
+    const seconds = match24[3] ? parseInt(match24[3], 10) : 0;
 
     if (hours < 0 || hours > 23) return null;
     if (minutes < 0 || minutes > 59) return null;
+    if (seconds < 0 || seconds > 59) return null;
 
     const newDate = new Date(baseDate);
-    newDate.setHours(hours, minutes, 0, 0);
+    newDate.setHours(hours, minutes, seconds, 0);
     return newDate;
   }
   
@@ -79,27 +102,12 @@ export default function TimerConfirmationSheet({
   const [teacherName, setTeacherName] = useState<string>('');
   const [rating, setRating] = useState<string>('');
 
-  const formatTimeInput = (text: string, prevText: string) => {
-    if (text.length < prevText.length) return text;
-    const cleaned = text.replace(/\D/g, '');
-    let hours = cleaned.slice(0, 2);
-    let minutes = cleaned.slice(2, 4);
 
-    if (hours.length === 2 && parseInt(hours, 10) > 23) hours = '23';
-    if (minutes.length === 2 && parseInt(minutes, 10) > 59) minutes = '59';
-
-    if (cleaned.length >= 3) {
-      return `${hours}:${minutes}`;
-    } else if (cleaned.length === 2 && text.length === 2) {
-      return `${hours}:`;
-    }
-    return cleaned;
-  };
   
   useEffect(() => {
     if (visible && timer) {
-      setStartTimeText(format24Time(new Date(timer.startTimeIso)));
-      setEndTimeText(format24Time(new Date()));
+      setStartTimeText(formatISTTime(new Date(timer.startTimeIso)));
+      setEndTimeText(formatISTTime(new Date()));
       setIsSubmitting(false);
 
       if (subject && subject.teachers && subject.teachers.length > 0) {
@@ -177,11 +185,7 @@ export default function TimerConfirmationSheet({
         <View style={styles.overlay}>
           <TouchableWithoutFeedback onPress={() => !isSubmitting && onDiscard()}>
             <View style={styles.backdrop}>
-              {Platform.OS !== 'web' ? (
-                <BlurView intensity={30} style={StyleSheet.absoluteFill} tint="dark" />
-              ) : (
-                <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.7)' }]} />
-              )}
+              <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.7)' }]} />
             </View>
           </TouchableWithoutFeedback>
 
@@ -210,33 +214,89 @@ export default function TimerConfirmationSheet({
                 </View>
 
                 <View style={styles.timeGrid}>
-                    <View style={styles.timeCol}>
-                      <Text style={styles.timeLabel}>STARTED (IST)</Text>
-                      <TextInput
-                        style={styles.timeInput}
-                        value={startTimeText}
-                        onChangeText={(t) => setStartTimeText(formatTimeInput(t, startTimeText))}
-                        placeholder="e.g. 10:15"
-                        keyboardType="numeric"
-                        placeholderTextColor={textColors.tertiary}
-                      />
-                    </View>
-                    
-                    <View style={styles.timeDivider}>
-                      <Ionicons name="arrow-forward" size={16} color={textColors.tertiary} />
-                    </View>
+                  <View style={styles.timeCol}>
+                    <Text style={styles.timeLabel}>STARTED (IST)</Text>
+                    <TextInput
+                      style={styles.timeInput}
+                      value={startTimeText}
+                      onChangeText={setStartTimeText}
+                      placeholder="e.g. 10:15:30 AM"
+                      placeholderTextColor={textColors.tertiary}
+                    />
+                  </View>
+                  
+                  <View style={styles.timeDivider}>
+                    <Ionicons name="arrow-forward" size={16} color={textColors.tertiary} />
+                  </View>
 
-                    <View style={[styles.timeCol, { alignItems: 'flex-end' }]}>
-                      <Text style={styles.timeLabel}>ENDED (IST)</Text>
-                      <TextInput
-                        style={[styles.timeInput, { textAlign: 'right' }]}
-                        value={endTimeText}
-                        onChangeText={(t) => setEndTimeText(formatTimeInput(t, endTimeText))}
-                        placeholder="e.g. 11:30"
-                        keyboardType="numeric"
-                        placeholderTextColor={textColors.tertiary}
-                      />
+                  <View style={[styles.timeCol, { alignItems: 'flex-end' }]}>
+                    <Text style={styles.timeLabel}>ENDED (IST)</Text>
+                    <TextInput
+                      style={[styles.timeInput, { textAlign: 'right' }]}
+                      value={endTimeText}
+                      onChangeText={setEndTimeText}
+                      placeholder="e.g. 11:30:00 AM"
+                      placeholderTextColor={textColors.tertiary}
+                    />
+                  </View>
+                </View>
+
+                <View style={styles.formGroup}>
+                  <Text style={styles.label}>CLASS TYPE</Text>
+                  <View style={styles.segmentedControl}>
+                    {(['theory', 'lab', 'tutorial'] as const).map(type => (
+                      <TouchableOpacity
+                        key={type}
+                        style={[styles.segmentBtn, classType === type && styles.segmentBtnActive]}
+                        onPress={() => setClassType(type)}
+                      >
+                        <Text style={[styles.segmentText, classType === type && styles.segmentTextActive]}>
+                          {type === 'theory' ? 'Theory' : type === 'lab' ? 'Lab' : 'Tutorial'}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
+
+                {subject?.teachers?.length > 0 && (
+                  <View style={styles.formGroup}>
+                    <Text style={styles.label}>TEACHER (OPTIONAL)</Text>
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.xs }}>
+                      {subject.teachers.map((t: string) => {
+                        let display = t;
+                        try {
+                          if (t.startsWith('{')) {
+                            const obj = JSON.parse(t);
+                            display = `${obj.n} (${obj.s})`;
+                          }
+                        } catch(e) {}
+                        return (
+                          <TouchableOpacity
+                            key={t}
+                            style={[
+                              { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, borderWidth: 1, borderColor: border.default },
+                              teacherName === t && { backgroundColor: accent.primary, borderColor: accent.primary }
+                            ]}
+                            onPress={() => setTeacherName(teacherName === t ? '' : t)}
+                          >
+                            <Text style={[{ fontSize: 12, color: textColors.secondary }, teacherName === t && { color: '#fff' }]}>{display}</Text>
+                          </TouchableOpacity>
+                        );
+                      })}
                     </View>
+                  </View>
+                )}
+
+                <View style={styles.formGroup}>
+                  <Text style={styles.label}>RATING /10 (OPTIONAL)</Text>
+                  <TextInput
+                    style={styles.timeInput}
+                    value={rating}
+                    onChangeText={setRating}
+                    placeholder="e.g. 8.5"
+                    keyboardType="numeric"
+                    placeholderTextColor={textColors.tertiary}
+                  />
                 </View>
 
                 {currentError && (
@@ -468,5 +528,40 @@ const styles = StyleSheet.create({
     fontFamily: fontFamily.bold,
     fontSize: fontSize.base,
     color: '#fff',
+  },
+  segmentedControl: {
+    flexDirection: "row",
+    backgroundColor: glass.medium,
+    borderRadius: radius.md,
+    padding: 4,
+    marginTop: spacing.xs,
+  },
+  segmentBtn: {
+    flex: 1,
+    paddingVertical: spacing.sm,
+    alignItems: "center",
+    borderRadius: radius.sm,
+  },
+  segmentBtnActive: {
+    backgroundColor: glass.light,
+  },
+  segmentText: {
+    fontFamily: fontFamily.medium,
+    fontSize: fontSize.sm,
+    color: textColors.secondary,
+  },
+  segmentTextActive: {
+    color: textColors.primary,
+    fontFamily: fontFamily.bold,
+  },
+  formGroup: {
+    gap: spacing.sm,
+    marginBottom: spacing.lg,
+  },
+  label: {
+    fontFamily: fontFamily.bold,
+    fontSize: 10,
+    color: textColors.tertiary,
+    letterSpacing: 1.5,
   },
 });

@@ -9,6 +9,7 @@ import {
   Platform,
   ScrollView,
   TextInput,
+  TouchableWithoutFeedback,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
@@ -168,13 +169,11 @@ export default function AddClassSheet({ visible, subjects, semesters, initialSem
       onRequestClose={onClose}
     >
       <View style={styles.overlay}>
-        <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={onClose}>
-          {Platform.OS !== 'web' ? (
-            <BlurView intensity={30} style={StyleSheet.absoluteFill} tint="dark" />
-          ) : (
+        <TouchableWithoutFeedback onPress={onClose}>
+          <View style={styles.backdrop}>
             <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.7)' }]} />
-          )}
-        </TouchableOpacity>
+          </View>
+        </TouchableWithoutFeedback>
 
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -214,6 +213,35 @@ export default function AddClassSheet({ visible, subjects, semesters, initialSem
                   ))}
                 </ScrollView>
               </View>
+
+              {selectedSubjectId && subjects.find(s => s.id === selectedSubjectId)?.teachers?.length > 0 && (
+                <View style={styles.formGroup}>
+                  <Text style={styles.label}>DEFAULT TEACHER (OPTIONAL)</Text>
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.xs }}>
+                    {subjects.find(s => s.id === selectedSubjectId)?.teachers.map((t: string) => {
+                      let display = t;
+                      try {
+                        if (t.startsWith('{')) {
+                          const obj = JSON.parse(t);
+                          display = `${obj.n} (${obj.s})`;
+                        }
+                      } catch(e) {}
+                      return (
+                        <TouchableOpacity
+                          key={t}
+                          style={[
+                            { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, borderWidth: 1, borderColor: border.default },
+                            defaultTeacher === t && { backgroundColor: accent.primary, borderColor: accent.primary }
+                          ]}
+                          onPress={() => setDefaultTeacher(defaultTeacher === t ? '' : t)}
+                        >
+                          <Text style={[{ fontSize: 12, color: textColors.secondary }, defaultTeacher === t && { color: '#fff' }]}>{display}</Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                </View>
+              )}
 
               <View style={styles.formGroup}>
                 <Text style={styles.label}>CLASS TYPE</Text>
@@ -345,7 +373,7 @@ const styles = StyleSheet.create({
     zIndex: 10,
   },
   sheetContainer: {
-    backgroundColor: glass.strong,
+    backgroundColor: canvas.elevated,
     borderTopLeftRadius: Platform.OS === 'web' ? radius['2xl'] : radius['3xl'],
     borderTopRightRadius: Platform.OS === 'web' ? radius['2xl'] : radius['3xl'],
     borderBottomLeftRadius: Platform.OS === 'web' ? radius['2xl'] : 0,
