@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+﻿import React, { useState, useMemo, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -8,11 +8,14 @@ import {
   TouchableWithoutFeedback,
   ScrollView,
   Platform,
+  Animated,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { canvas, text as textColors, border, glass, shadow } from '../theme/colors';
 import { spacing, radius } from '../theme/spacing';
 import { fontFamily, fontSize } from '../theme/typography';
+import AttendanceGauge from './AttendanceGauge';
 
 interface ExpandedAttendanceSheetProps {
   visible: boolean;
@@ -20,6 +23,78 @@ interface ExpandedAttendanceSheetProps {
   subjects: any[];
   records: any[];
 }
+
+const AnimatedSubjectCard = ({ stat, index }: { stat: any, index: number }) => {
+  const slideAnim = useRef(new Animated.Value(50)).current;
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(slideAnim, {
+        toValue: 0,
+        duration: 400,
+        delay: index * 100,
+        useNativeDriver: true,
+      }),
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 400,
+        delay: index * 100,
+        useNativeDriver: true,
+      })
+    ]).start();
+  }, [index]);
+
+  const target = stat.target_threshold || 75;
+  const isSafe = stat.percentage >= target;
+
+  return (
+    <Animated.View style={{ transform: [{ translateY: slideAnim }], opacity: fadeAnim }}>
+      <LinearGradient
+        colors={[stat.color + '10', canvas.elevated]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={[styles.subjectCard, shadow.md, { borderLeftColor: stat.color, borderLeftWidth: 4 }]}
+      >
+        <View style={styles.cardMain}>
+          <View style={styles.subjectInfo}>
+            <Text style={styles.subjectName}>{stat.name}</Text>
+            <View style={styles.targetBadge}>
+              <Ionicons name="flag" size={12} color={textColors.tertiary} />
+              <Text style={styles.targetText}>Target: {target}%</Text>
+            </View>
+            <View style={styles.statsGrid}>
+              <View style={styles.statBox}>
+                <Text style={styles.statLabel}>Attended</Text>
+                <Text style={[styles.statValue, { color: '#10B981' }]}>{stat.attended}</Text>
+              </View>
+              <View style={styles.statBox}>
+                <Text style={styles.statLabel}>Missed</Text>
+                <Text style={[styles.statValue, { color: '#EF4444' }]}>{stat.missed}</Text>
+              </View>
+              <View style={styles.statBox}>
+                <Text style={styles.statLabel}>Total</Text>
+                <Text style={[styles.statValue, { color: textColors.primary }]}>{stat.conducted}</Text>
+              </View>
+            </View>
+          </View>
+          <View style={styles.gaugeContainer}>
+            <AttendanceGauge
+              percentage={stat.percentage}
+              threshold={target}
+              size={72}
+              strokeWidth={6}
+            >
+              <Text style={[styles.gaugePercentageText, { color: isSafe ? '#10B981' : '#EF4444' }]}>
+                {stat.percentage}%
+              </Text>
+            </AttendanceGauge>
+          </View>
+        </View>
+      </LinearGradient>
+    </Animated.View>
+  );
+};
 
 export default function ExpandedAttendanceSheet({
   visible,
@@ -42,7 +117,10 @@ export default function ExpandedAttendanceSheet({
   // Filter records
   const filteredRecords = useMemo(() => {
     return records.filter(r => {
-      if (filterType !== 'all' && r.class_type && r.class_type !== filterType) return false;
+      if (filterType !== 'all') {
+        const rType = r.class_type || 'theory'; // Default legacy records to theory
+        if (rType !== filterType) return false;
+      }
       if (selectedTeacher && r.teacher_name !== selectedTeacher) return false;
       return true;
     });
@@ -70,6 +148,10 @@ export default function ExpandedAttendanceSheet({
     }).sort((a, b) => b.percentage - a.percentage);
   }, [subjects, filteredRecords]);
 
+  const overallAttended = subjectStats.reduce((sum, s) => sum + s.attended, 0);
+  const overallConducted = subjectStats.reduce((sum, s) => sum + s.conducted, 0);
+  const overallPercentage = calculatePercentage(overallAttended, overallConducted);
+
   return (
     <Modal
       visible={visible}
@@ -80,15 +162,18 @@ export default function ExpandedAttendanceSheet({
       <View style={styles.overlay}>
         <TouchableWithoutFeedback onPress={onClose}>
           <View style={styles.backdrop}>
-            <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.7)' }]} />
+            <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.75)' }]} />
           </View>
         </TouchableWithoutFeedback>
 
         <View style={styles.sheetContent}>
           <View style={styles.header}>
-            <Text style={styles.title}>Detailed Attendance</Text>
-            <TouchableOpacity onPress={onClose} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-              <Ionicons name="close" size={24} color={textColors.secondary} />
+            <View>
+              <Text style={styles.title}>Detailed Attendance</Text>
+              <Text style={styles.subtitle}>Filtered Overall: <Text style={{ color: overallPercentage >= 75 ? '#10B981' : '#EF4444', fontFamily: fontFamily.bold }}>{overallPercentage}%</Text></Text>
+            </View>
+            <TouchableOpacity onPress={onClose} style={styles.closeBtn} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+              <Ionicons name="close" size={20} color={textColors.primary} />
             </TouchableOpacity>
           </View>
 
@@ -108,7 +193,7 @@ export default function ExpandedAttendanceSheet({
             </ScrollView>
 
             {allTeachers.length > 0 && (
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterRow} contentContainerStyle={{ paddingHorizontal: spacing.md, gap: spacing.sm, marginTop: spacing.sm }}>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterRow} contentContainerStyle={{ paddingHorizontal: spacing.md, gap: spacing.sm, marginTop: spacing.md }}>
                 <TouchableOpacity
                   style={[styles.filterChip, selectedTeacher === null && styles.filterChipActive]}
                   onPress={() => setSelectedTeacher(null)}
@@ -140,24 +225,15 @@ export default function ExpandedAttendanceSheet({
             )}
           </View>
 
-          <ScrollView style={styles.list} contentContainerStyle={{ padding: spacing.md, gap: spacing.md }}>
-            {subjectStats.map(stat => (
-              <View key={stat.id} style={[styles.subjectCard, shadow.low, { borderLeftColor: stat.color, borderLeftWidth: 4 }]}>
-                <View style={styles.subjectHeader}>
-                  <Text style={styles.subjectName}>{stat.name}</Text>
-                  <Text style={[styles.percentage, { color: stat.percentage >= stat.target_threshold ? '#10B981' : '#EF4444' }]}>
-                    {stat.percentage}%
-                  </Text>
-                </View>
-                <View style={styles.statsRow}>
-                  <Text style={styles.statText}>Attended: <Text style={{ color: textColors.primary }}>{stat.attended}</Text></Text>
-                  <Text style={styles.statText}>Missed: <Text style={{ color: textColors.primary }}>{stat.missed}</Text></Text>
-                  <Text style={styles.statText}>Total: <Text style={{ color: textColors.primary }}>{stat.conducted}</Text></Text>
-                </View>
-              </View>
+          <ScrollView style={styles.list} contentContainerStyle={{ padding: spacing.md, paddingBottom: spacing['2xl'], gap: spacing.md }} showsVerticalScrollIndicator={false}>
+            {subjectStats.map((stat, index) => (
+              <AnimatedSubjectCard key={stat.id} stat={stat} index={index} />
             ))}
             {subjectStats.length === 0 && (
-              <Text style={{ color: textColors.tertiary, textAlign: 'center', marginTop: spacing.xl }}>No data available for these filters.</Text>
+              <View style={{ alignItems: 'center', marginTop: spacing['2xl'] }}>
+                <Ionicons name="bar-chart-outline" size={48} color={border.default} />
+                <Text style={{ color: textColors.tertiary, marginTop: spacing.md, fontFamily: fontFamily.medium }}>No records match these filters.</Text>
+              </View>
             )}
           </ScrollView>
         </View>
@@ -182,7 +258,7 @@ const styles = StyleSheet.create({
     backgroundColor: canvas.base,
     borderTopLeftRadius: radius.xl,
     borderTopRightRadius: radius.xl,
-    maxHeight: '80%',
+    maxHeight: '85%',
   },
   header: {
     flexDirection: 'row',
@@ -194,11 +270,22 @@ const styles = StyleSheet.create({
   },
   title: {
     fontFamily: fontFamily.bold,
-    fontSize: fontSize.lg,
+    fontSize: fontSize.xl,
     color: textColors.primary,
   },
+  subtitle: {
+    fontFamily: fontFamily.medium,
+    fontSize: fontSize.sm,
+    color: textColors.secondary,
+    marginTop: 2,
+  },
+  closeBtn: {
+    backgroundColor: glass.medium,
+    padding: spacing.xs,
+    borderRadius: radius.full,
+  },
   filterSection: {
-    paddingVertical: spacing.md,
+    paddingVertical: spacing.lg,
     borderBottomWidth: 1,
     borderBottomColor: border.subtle,
     backgroundColor: glass.light,
@@ -225,40 +312,75 @@ const styles = StyleSheet.create({
   },
   filterTextActive: {
     color: canvas.base,
+    fontFamily: fontFamily.bold,
   },
   list: {
     flexShrink: 1,
   },
   subjectCard: {
-    backgroundColor: canvas.elevated,
-    padding: spacing.md,
-    borderRadius: radius.md,
+    borderRadius: radius.lg,
     borderWidth: 1,
     borderColor: border.subtle,
+    overflow: 'hidden',
   },
-  subjectHeader: {
+  cardMain: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: spacing.xs,
+    padding: spacing.md,
+    gap: spacing.md,
+  },
+  subjectInfo: {
+    flex: 1,
   },
   subjectName: {
     fontFamily: fontFamily.bold,
     fontSize: fontSize.base,
     color: textColors.primary,
-    flex: 1,
+    marginBottom: 4,
   },
-  percentage: {
-    fontFamily: fontFamily.bold,
-    fontSize: fontSize.lg,
+  targetBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: glass.medium,
+    alignSelf: 'flex-start',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: radius.sm,
+    marginBottom: spacing.md,
   },
-  statsRow: {
+  targetText: {
+    fontFamily: fontFamily.medium,
+    fontSize: 10,
+    color: textColors.tertiary,
+  },
+  statsGrid: {
     flexDirection: 'row',
     gap: spacing.lg,
   },
-  statText: {
-    fontFamily: fontFamily.regular,
-    fontSize: fontSize.xs,
-    color: textColors.secondary,
+  statBox: {
+    alignItems: 'flex-start',
+  },
+  statLabel: {
+    fontFamily: fontFamily.semiBold,
+    fontSize: 10,
+    color: textColors.tertiary,
+    textTransform: 'uppercase',
+    marginBottom: 2,
+  },
+  statValue: {
+    fontFamily: fontFamily.bold,
+    fontSize: fontSize.md,
+  },
+  gaugeContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: spacing.xs,
+    backgroundColor: glass.light,
+    borderRadius: radius.full,
+  },
+  gaugePercentageText: {
+    fontFamily: fontFamily.bold,
+    fontSize: fontSize.sm,
   },
 });

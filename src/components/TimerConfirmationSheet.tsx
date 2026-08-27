@@ -627,8 +627,9 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.md,
     paddingHorizontal: spacing.md,
     borderRadius: radius.md,
+    backgroundColor: 'rgba(245, 158, 11, 0.1)', // Amber background
     borderWidth: 1,
-    borderColor: border.default,
+    borderColor: 'rgba(245, 158, 11, 0.3)',
     alignItems: 'center',
     justifyContent: 'center',
     flex: 1,
@@ -656,7 +657,7 @@ const styles = StyleSheet.create({
   cancelText: {
     fontFamily: fontFamily.bold,
     fontSize: fontSize.sm,
-    color: textColors.primary,
+    color: '#F59E0B',
   },
   discardText: {
     fontFamily: fontFamily.bold,
