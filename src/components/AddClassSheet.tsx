@@ -27,27 +27,48 @@ import { spacing, radius } from '../theme/spacing';
 interface AddClassSheetProps {
   visible: boolean;
   subjects: any[];
+  semesters?: any[];
+  initialSemesterId?: string;
   initialData?: {
     id: string;
+    semesterId?: string;
     subjectId: string;
     dayOfWeek: string;
     startTime: string;
     endTime: string;
     roomNumber: string;
+    class_type?: string;
+    default_teacher?: string;
+    date?: string;
   } | null;
   onClose: () => void;
-  onSave: (data: { subjectId: string; dayOfWeek: string; startTime: string; endTime: string; roomNumber?: string }) => void;
+  onSave: (data: {
+    semesterId?: string;
+    subjectId: string;
+    dayOfWeek: string;
+    startTime: string;
+    endTime: string;
+    roomNumber?: string;
+    class_type?: string;
+    default_teacher?: string;
+    date?: string;
+  }) => void;
   onDelete?: () => void;
 }
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
-export default function AddClassSheet({ visible, subjects, initialData, onClose, onSave, onDelete }: AddClassSheetProps) {
+export default function AddClassSheet({ visible, subjects, semesters, initialSemesterId, initialData, onClose, onSave, onDelete }: AddClassSheetProps) {
+  const [selectedSemesterId, setSelectedSemesterId] = useState(initialSemesterId || '');
   const [selectedSubjectId, setSelectedSubjectId] = useState('');
   const [selectedDay, setSelectedDay] = useState('Monday');
   const [startTime, setStartTime] = useState('09:00');
   const [endTime, setEndTime] = useState('10:00');
   const [roomNumber, setRoomNumber] = useState('');
+  
+  const [dateText, setDateText] = useState('');
+  const [classType, setClassType] = useState<'theory' | 'lab' | 'tutorial'>('theory');
+  const [defaultTeacher, setDefaultTeacher] = useState('');
 
   useEffect(() => {
     if (visible) {
@@ -67,14 +88,74 @@ export default function AddClassSheet({ visible, subjects, initialData, onClose,
     }
   }, [visible, subjects, initialData]);
 
+  const formatTimeInput = (text: string, prevText: string) => {
+    if (text.length < prevText.length) return text;
+    const cleaned = text.replace(/\D/g, '');
+    let hours = cleaned.slice(0, 2);
+    let minutes = cleaned.slice(2, 4);
+
+    if (hours.length === 2 && parseInt(hours, 10) > 23) hours = '23';
+    if (minutes.length === 2 && parseInt(minutes, 10) > 59) minutes = '59';
+
+    if (cleaned.length >= 3) {
+      return `${hours}:${minutes}`;
+    } else if (cleaned.length === 2 && text.length === 2) {
+      return `${hours}:`;
+    }
+    return cleaned;
+  };
+
+  const formatDateInput = (text: string, prevText: string) => {
+    if (text.length < prevText.length) return text;
+    const cleaned = text.replace(/\D/g, '');
+    let year = cleaned.slice(0, 4);
+    let month = cleaned.slice(4, 6);
+    let day = cleaned.slice(6, 8);
+
+    if (month.length === 2 && parseInt(month, 10) > 12) month = '12';
+    if (day.length === 2 && parseInt(day, 10) > 31) day = '31';
+
+    if (cleaned.length >= 7) {
+      return `${year}/${month}/${day}`;
+    } else if (cleaned.length >= 5) {
+      return `${year}/${month}`;
+    } else if (cleaned.length >= 4 && text.length === 4) {
+      return `${year}/`;
+    }
+    return cleaned;
+  };
+
+  const handleDateChange = (text: string) => {
+    const formatted = formatDateInput(text, dateText);
+    setDateText(formatted);
+
+    // Auto-fill day of week
+    if (formatted.length === 10) {
+      const parts = formatted.split('/');
+      if (parts.length === 3) {
+        const d = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+        if (!isNaN(d.getTime())) {
+          const dayName = d.toLocaleDateString('en-US', { weekday: 'long' });
+          if (DAYS.includes(dayName)) {
+            setSelectedDay(dayName);
+          }
+        }
+      }
+    }
+  };
+
   const handleSave = () => {
     if (!selectedSubjectId || !selectedDay || !startTime || !endTime) return;
     onSave({
+      semesterId: selectedSemesterId || undefined,
       subjectId: selectedSubjectId,
       dayOfWeek: selectedDay,
       startTime,
       endTime,
       roomNumber: roomNumber.trim() || undefined,
+      class_type: classType,
+      default_teacher: defaultTeacher || undefined,
+      date: dateText.replace(/\//g, '-') || undefined,
     });
     onClose();
   };
@@ -96,7 +177,7 @@ export default function AddClassSheet({ visible, subjects, initialData, onClose,
         </TouchableOpacity>
 
         <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
           style={styles.keyboardContainer}
         >
           <View style={styles.sheetContainer}>
@@ -123,22 +204,45 @@ export default function AddClassSheet({ visible, subjects, initialData, onClose,
                   {subjects.map(sub => (
                     <TouchableOpacity
                       key={sub.id}
-                      style={[
-                        styles.chip,
-                        selectedSubjectId === sub.id && {
-                          borderColor: sub.color,
-                          backgroundColor: sub.color + '20',
-                          ...shadow.glow(sub.color),
-                        }
-                      ]}
+                      style={[styles.chip, selectedSubjectId === sub.id && styles.chipActive, { borderColor: sub.color }]}
                       onPress={() => setSelectedSubjectId(sub.id)}
                     >
-                      <Text style={[styles.chipText, selectedSubjectId === sub.id && { color: sub.color, fontFamily: fontFamily.bold }]}>
-                        {sub.short_name}
+                      <Text style={[styles.chipText, selectedSubjectId === sub.id && styles.chipTextActive]}>
+                        {sub.short_name || sub.name}
                       </Text>
                     </TouchableOpacity>
                   ))}
                 </ScrollView>
+              </View>
+
+              <View style={styles.formGroup}>
+                <Text style={styles.label}>CLASS TYPE</Text>
+                <View style={{ flexDirection: 'row', backgroundColor: glass.medium, borderRadius: radius.md, padding: 4 }}>
+                  {(['theory', 'lab', 'tutorial'] as const).map(type => (
+                    <TouchableOpacity
+                      key={type}
+                      style={[{ flex: 1, paddingVertical: spacing.sm, alignItems: 'center', borderRadius: radius.sm }, classType === type && { backgroundColor: glass.light }]}
+                      onPress={() => setClassType(type)}
+                    >
+                      <Text style={[styles.chipText, classType === type && { color: textColors.primary, fontFamily: fontFamily.bold }]}>
+                        {type === 'theory' ? 'Theory' : type === 'lab' ? 'Lab' : 'Tutorial'}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+
+              <View style={styles.formGroup}>
+                <Text style={styles.label}>SPECIFIC DATE (OPTIONAL)</Text>
+                <TextInput
+                  style={styles.roomInput}
+                  value={dateText}
+                  onChangeText={handleDateChange}
+                  placeholder="YYYY/MM/DD"
+                  keyboardType="numeric"
+                  maxLength={10}
+                  placeholderTextColor={textColors.tertiary}
+                />
               </View>
 
               <View style={styles.formGroup}>
@@ -164,8 +268,10 @@ export default function AddClassSheet({ visible, subjects, initialData, onClose,
                   <TextInput
                     style={styles.timeInput}
                     value={startTime}
-                    onChangeText={setStartTime}
+                    onChangeText={(t) => setStartTime(formatTimeInput(t, startTime))}
                     placeholder="e.g. 09:00"
+                    keyboardType="numeric"
+                    maxLength={5}
                     placeholderTextColor={textColors.tertiary}
                   />
                 </View>
@@ -174,8 +280,10 @@ export default function AddClassSheet({ visible, subjects, initialData, onClose,
                   <TextInput
                     style={[styles.timeInput, { textAlign: 'right' }]}
                     value={endTime}
-                    onChangeText={setEndTime}
-                    placeholder="e.g. 10:00"
+                    onChangeText={(t) => setEndTime(formatTimeInput(t, endTime))}
+                    placeholder="e.g. 10:30"
+                    keyboardType="numeric"
+                    maxLength={5}
                     placeholderTextColor={textColors.tertiary}
                   />
                 </View>

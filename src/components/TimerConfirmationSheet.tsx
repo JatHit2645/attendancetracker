@@ -31,17 +31,16 @@ interface TimerConfirmationSheetProps {
   visible: boolean;
   timer: TimerState | null;
   records: any[];
-  onConfirm: (start: Date, end: Date) => Promise<void> | void;
+  subject?: any; // Add subject prop to fetch default teachers
+  onConfirm: (start: Date, end: Date, classType: string, teacherName: string, rating: number | null) => Promise<void> | void;
   onDiscard: () => void;
 }
 
-const formatISTTime = (date: Date) => {
+const format24Time = (date: Date) => {
   return date.toLocaleTimeString('en-US', {
-    timeZone: 'Asia/Kolkata',
-    hour: 'numeric',
+    hour: '2-digit',
     minute: '2-digit',
-    second: '2-digit',
-    hour12: true,
+    hour12: false,
   });
 };
 
@@ -49,40 +48,19 @@ const parseTimeText = (text: string, baseDate: Date): Date | null => {
   if (!text) return null;
   const cleaned = text.trim();
   
-  const match12 = cleaned.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(AM|PM)$/i);
-  if (match12) {
-    let hours = parseInt(match12[1], 10);
-    const minutes = parseInt(match12[2], 10);
-    const seconds = match12[3] ? parseInt(match12[3], 10) : 0;
-    const ampm = match12[4].toUpperCase();
-
-    if (hours < 1 || hours > 12) return null;
-    if (minutes < 0 || minutes > 59) return null;
-    if (seconds < 0 || seconds > 59) return null;
-
-    if (ampm === 'PM' && hours < 12) hours += 12;
-    if (ampm === 'AM' && hours === 12) hours = 0;
-
-    const newDate = new Date(baseDate);
-    newDate.setHours(hours, minutes, seconds, 0);
-    return newDate;
-  }
-
-  const match24 = cleaned.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
+  const match24 = cleaned.match(/^(\d{1,2}):(\d{2})$/);
   if (match24) {
     const hours = parseInt(match24[1], 10);
     const minutes = parseInt(match24[2], 10);
-    const seconds = match24[3] ? parseInt(match24[3], 10) : 0;
 
     if (hours < 0 || hours > 23) return null;
     if (minutes < 0 || minutes > 59) return null;
-    if (seconds < 0 || seconds > 59) return null;
 
     const newDate = new Date(baseDate);
-    newDate.setHours(hours, minutes, seconds, 0);
+    newDate.setHours(hours, minutes, 0, 0);
     return newDate;
   }
-
+  
   return null;
 };
 
@@ -90,20 +68,45 @@ export default function TimerConfirmationSheet({
   visible,
   timer,
   records,
+  subject,
   onConfirm,
   onDiscard,
 }: TimerConfirmationSheetProps) {
   const [startTimeText, setStartTimeText] = useState('');
   const [endTimeText, setEndTimeText] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [classType, setClassType] = useState<'theory' | 'lab' | 'tutorial'>('theory');
+  const [teacherName, setTeacherName] = useState<string>('');
+  const [rating, setRating] = useState<string>('');
+
+  const formatTimeInput = (text: string, prevText: string) => {
+    if (text.length < prevText.length) return text;
+    const cleaned = text.replace(/\D/g, '');
+    let hours = cleaned.slice(0, 2);
+    let minutes = cleaned.slice(2, 4);
+
+    if (hours.length === 2 && parseInt(hours, 10) > 23) hours = '23';
+    if (minutes.length === 2 && parseInt(minutes, 10) > 59) minutes = '59';
+
+    if (cleaned.length >= 3) {
+      return `${hours}:${minutes}`;
+    } else if (cleaned.length === 2 && text.length === 2) {
+      return `${hours}:`;
+    }
+    return cleaned;
+  };
   
   useEffect(() => {
     if (visible && timer) {
-      setStartTimeText(formatISTTime(new Date(timer.startTimeIso)));
-      setEndTimeText(formatISTTime(new Date()));
+      setStartTimeText(format24Time(new Date(timer.startTimeIso)));
+      setEndTimeText(format24Time(new Date()));
       setIsSubmitting(false);
+
+      if (subject && subject.teachers && subject.teachers.length > 0) {
+        setTeacherName(subject.teachers[0]);
+      }
     }
-  }, [visible, timer]);
+  }, [visible, timer, subject]);
 
   if (!timer) return null;
 
@@ -155,7 +158,7 @@ export default function TimerConfirmationSheet({
     if (isSubmitting || currentError || !parsedStart || !parsedEnd) return;
     setIsSubmitting(true);
     try {
-      await onConfirm(parsedStart, parsedEnd);
+      await onConfirm(parsedStart, parsedEnd, classType, teacherName, rating ? parseFloat(rating) : null);
     } catch (e) {
       console.error(e);
     } finally {
@@ -207,31 +210,33 @@ export default function TimerConfirmationSheet({
                 </View>
 
                 <View style={styles.timeGrid}>
-                  <View style={styles.timeCol}>
-                    <Text style={styles.timeLabel}>STARTED (IST)</Text>
-                    <TextInput
-                      style={styles.timeInput}
-                      value={startTimeText}
-                      onChangeText={setStartTimeText}
-                      placeholder="e.g. 10:15:00 AM"
-                      placeholderTextColor={textColors.tertiary}
-                    />
-                  </View>
-                  
-                  <View style={styles.timeDivider}>
-                    <Ionicons name="arrow-forward" size={16} color={textColors.tertiary} />
-                  </View>
+                    <View style={styles.timeCol}>
+                      <Text style={styles.timeLabel}>STARTED (IST)</Text>
+                      <TextInput
+                        style={styles.timeInput}
+                        value={startTimeText}
+                        onChangeText={(t) => setStartTimeText(formatTimeInput(t, startTimeText))}
+                        placeholder="e.g. 10:15"
+                        keyboardType="numeric"
+                        placeholderTextColor={textColors.tertiary}
+                      />
+                    </View>
+                    
+                    <View style={styles.timeDivider}>
+                      <Ionicons name="arrow-forward" size={16} color={textColors.tertiary} />
+                    </View>
 
-                  <View style={[styles.timeCol, { alignItems: 'flex-end' }]}>
-                    <Text style={styles.timeLabel}>ENDED (IST)</Text>
-                    <TextInput
-                      style={[styles.timeInput, { textAlign: 'right' }]}
-                      value={endTimeText}
-                      onChangeText={setEndTimeText}
-                      placeholder="e.g. 11:15:00 AM"
-                      placeholderTextColor={textColors.tertiary}
-                    />
-                  </View>
+                    <View style={[styles.timeCol, { alignItems: 'flex-end' }]}>
+                      <Text style={styles.timeLabel}>ENDED (IST)</Text>
+                      <TextInput
+                        style={[styles.timeInput, { textAlign: 'right' }]}
+                        value={endTimeText}
+                        onChangeText={(t) => setEndTimeText(formatTimeInput(t, endTimeText))}
+                        placeholder="e.g. 11:30"
+                        keyboardType="numeric"
+                        placeholderTextColor={textColors.tertiary}
+                      />
+                    </View>
                 </View>
 
                 {currentError && (

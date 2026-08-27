@@ -1,6 +1,6 @@
 /**
  * Attendance Tracker — Subjects Screen (Phase 3)
- * 
+ *
  * Bento-box inspired grid layout for subject management.
  * High-end UI features:
  * - Glassmorphic cards with translucent borders
@@ -9,12 +9,22 @@
  * - Monochromatic dark obsidian aesthetic with neon accent glows
  */
 
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Platform, Dimensions, Alert } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
-import { Ionicons } from '@expo/vector-icons';
-import { useState, useCallback, useEffect } from 'react';
-import SubjectBottomSheet from '../../components/SubjectBottomSheet';
-import SemesterSwitchSheet from '../../components/SemesterSwitchSheet';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  Platform,
+  Alert,
+  DeviceEventEmitter,
+  useWindowDimensions,
+} from "react-native";
+import { LinearGradient } from "expo-linear-gradient";
+import { Ionicons } from "@expo/vector-icons";
+import { useState, useCallback, useEffect } from "react";
+import SubjectBottomSheet from "../../components/SubjectBottomSheet";
+import SemesterSwitchSheet from "../../components/SemesterSwitchSheet";
 import {
   canvas,
   glass,
@@ -22,39 +32,44 @@ import {
   text as textColors,
   accent,
   shadow,
-} from '../../theme/colors';
-import { fontFamily, fontSize, textStyle } from '../../theme/typography';
-import { spacing, radius, layout } from '../../theme/spacing';
-import { calculatePercentage, getAttendanceStatus } from '../../data/mockData';
-import { DatabaseService } from '../../services/DatabaseService';
-import { Database } from '../../lib/database.types';
-import { supabase } from '../../lib/supabase';
+  palette,
+} from "../../theme/colors";
+import { fontFamily, fontSize, textStyle } from "../../theme/typography";
+import { spacing, radius, layout } from "../../theme/spacing";
+import { calculatePercentage, getAttendanceStatus } from "../../data/mockData";
+import { DatabaseService } from "../../services/DatabaseService";
+import { Database } from "../../lib/database.types";
+import { supabase } from "../../lib/supabase";
 
-type SubjectRow = Database['public']['Tables']['subjects']['Row'];
-type RecordRow = Database['public']['Tables']['attendance_records']['Row'];
+type SubjectRow = Database["public"]["Tables"]["subjects"]["Row"];
+type RecordRow = Database["public"]["Tables"]["attendance_records"]["Row"];
 
-// Simulated screen width for bento calculations
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
-const isLargeScreen = SCREEN_WIDTH > 768;
-
-export default function SubjectsScreen() {
+export default function SubjectsScreen({ isActive = true }: { isActive?: boolean }) {
+  const { width } = useWindowDimensions();
+  const isTablet = width >= 768;
   const [subjects, setSubjects] = useState<SubjectRow[]>([]);
   const [records, setRecords] = useState<RecordRow[]>([]);
-  const [loading, setLoading] = useState(true);
   
   // Modals
   const [sheetVisible, setSheetVisible] = useState(false);
   const [semesterSheetVisible, setSemesterSheetVisible] = useState(false);
-  const [selectedSubject, setSelectedSubject] = useState<{id?: string, name: string, shortName: string, threshold: number} | null>(null);
+  const [selectedSubject, setSelectedSubject] = useState<{
+    id?: string;
+    name: string;
+    shortName: string;
+    threshold: number;
+    teachers?: string[];
+  } | null>(null);
   const [activeSemesterId, setActiveSemesterId] = useState<string | null>(null);
-  const [semesterName, setSemesterName] = useState<string>('Loading Semester...');
+  const [semesterName, setSemesterName] = useState<string>(
+    "Loading Semester...",
+  );
 
   const loadData = useCallback(async () => {
     try {
-      setLoading(true);
-      const activeSem = await DatabaseService.fetchActiveSemester();
+            const activeSem = await DatabaseService.fetchActiveSemester();
       if (!activeSem) {
-        setSemesterName('No active semester');
+        setSemesterName("No active semester");
         return;
       }
       setActiveSemesterId(activeSem.id);
@@ -63,31 +78,60 @@ export default function SubjectsScreen() {
       // Fetch all subjects and all records for the semester
       const [fetchedSubjects, fetchedRecords] = await Promise.all([
         DatabaseService.fetchSubjects(activeSem.id),
-        DatabaseService.fetchAttendanceRecords(activeSem.id)
+        DatabaseService.fetchAttendanceRecords(activeSem.id),
       ]);
       setSubjects(fetchedSubjects);
       setRecords(fetchedRecords);
     } catch (error) {
-      console.warn('Failed to fetch from Supabase. Ensure backend is running.', error);
+      console.warn(
+        "Failed to fetch from Supabase. Ensure backend is running.",
+        error,
+      );
     } finally {
-      setLoading(false);
-    }
+          }
   }, []);
 
   useEffect(() => {
+    if (!isActive) return;
+
     loadData();
 
     // Realtime changes listener for automatic updates
     const subscription = supabase
-      .channel('public:attendance_records_subjects')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'attendance_records' }, payload => {
-        loadData();
-      })
+      .channel("public:attendance_records_subjects")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "attendance_records" },
+        (_payload) => {
+          loadData();
+        },
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "academic_semesters" },
+        (_payload) => {
+          loadData();
+        },
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "subjects" },
+        (_payload) => {
+          loadData();
+        },
+      )
       .subscribe();
 
     return () => {
       supabase.removeChannel(subscription);
     };
+  }, [loadData, isActive]);
+
+  useEffect(() => {
+    const sub = DeviceEventEmitter.addListener("semesterChanged", () => {
+      loadData();
+    });
+    return () => sub.remove();
   }, [loadData]);
 
   const handleOpenSheet = useCallback(() => {
@@ -100,7 +144,8 @@ export default function SubjectsScreen() {
       id: subject.id,
       name: subject.name,
       shortName: subject.short_name,
-      threshold: subject.target_threshold
+      threshold: subject.target_threshold,
+      teachers: subject.teachers, // Pass teachers to populate UI correctly on edit!
     });
     setSheetVisible(true);
   }, []);
@@ -109,47 +154,63 @@ export default function SubjectsScreen() {
     setSheetVisible(false);
   }, []);
 
-  const handleSaveSubject = useCallback(async (data: any) => {
-    try {
-      if (!activeSemesterId) return;
+  const handleSaveSubject = useCallback(
+    async (data: any) => {
+      try {
+        if (!activeSemesterId) return;
 
-      if (selectedSubject) {
-        await DatabaseService.updateSubject(selectedSubject.id, {
-          name: data.name,
-          short_name: data.shortName,
-          color: data.color || '#4ADE80',
-          target_threshold: data.threshold
-        });
-      } else {
-        await DatabaseService.createSubject({
-          semester_id: activeSemesterId,
-          name: data.name,
-          short_name: data.shortName,
-          color: data.color || '#4ADE80',
-          target_threshold: data.threshold
-        });
+        if (selectedSubject) {
+          await DatabaseService.updateSubject(selectedSubject.id, {
+            name: data.name,
+            short_name: data.shortName,
+            color: data.color || palette.emerald[400],
+            target_threshold: data.threshold,
+            teachers: data.teachers || [],
+          });
+        } else {
+          await DatabaseService.createSubject({
+            semester_id: activeSemesterId,
+            name: data.name,
+            short_name: data.shortName,
+            color: data.color || palette.emerald[400],
+            target_threshold: data.threshold,
+            teachers: data.teachers || [],
+          });
+        }
+        loadData();
+      } catch (e) {
+        console.error("Save failed", e);
       }
-      loadData();
-    } catch (e) {
-      console.error('Save failed', e);
-    }
-  }, [selectedSubject, activeSemesterId, loadData]);
+    },
+    [selectedSubject, activeSemesterId, loadData],
+  );
 
   const handleDeleteSubject = useCallback(async () => {
     if (!selectedSubject) return;
 
-    const confirmDelete = Platform.OS === 'web'
-      ? window.confirm(`Are you sure you want to permanently delete the subject "${selectedSubject.name}"? This will delete all attendance records and timetable slots for this subject.`)
-      : await new Promise<boolean>(resolve => {
-          Alert.alert(
-            "Delete Subject?",
-            `Are you sure you want to permanently delete the subject "${selectedSubject.name}"? All associated attendance and timetable slots will be lost.`,
-            [
-              { text: "Cancel", style: "cancel", onPress: () => resolve(false) },
-              { text: "Delete", style: "destructive", onPress: () => resolve(true) }
-            ]
-          );
-        });
+    const confirmDelete =
+      Platform.OS === "web"
+        ? window.confirm(
+            `Are you sure you want to permanently delete the subject "${selectedSubject.name}"? This will delete all attendance records and timetable slots for this subject.`,
+          )
+        : await new Promise<boolean>((resolve) => {
+            Alert.alert(
+              "Delete Subject?",
+              `Are you sure you want to permanently delete the subject "${selectedSubject.name}"? All associated attendance and timetable slots will be lost.`,
+              [
+                {
+                  text: "Cancel",
+                  style: "cancel",
+                  onPress: () => resolve(false),
+                },
+                {
+                  text: "Delete",
+                  style: "destructive",
+                  onPress: () => resolve(true),
+                },
+              ],
+            );
+          });
 
     if (confirmDelete) {
       try {
@@ -157,7 +218,7 @@ export default function SubjectsScreen() {
         setSheetVisible(false);
         loadData();
       } catch (e: any) {
-        Alert.alert('Error', 'Error deleting subject: ' + e.message);
+        Alert.alert("Error", "Error deleting subject: " + e.message);
       }
     }
   }, [selectedSubject, loadData]);
@@ -170,49 +231,66 @@ export default function SubjectsScreen() {
       >
         {/* Header Area */}
         <View style={styles.header}>
-          <TouchableOpacity 
-            style={styles.semesterBanner} 
+          <TouchableOpacity
+            style={styles.semesterBanner}
             activeOpacity={0.7}
             onPress={() => setSemesterSheetVisible(true)}
           >
             <Ionicons name="school" size={16} color={accent.primary} />
             <Text style={styles.semesterText}>{semesterName}</Text>
             <View style={styles.semesterEditButton}>
-              <Ionicons name="chevron-down" size={14} color={textColors.tertiary} />
+              <Ionicons
+                name="chevron-down"
+                size={14}
+                color={textColors.tertiary}
+              />
             </View>
           </TouchableOpacity>
 
           <View style={styles.headerTop}>
-            <View>
-              <Text style={styles.title}>Subjects</Text>
+            <View style={{ flex: 1 }}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                <Text style={styles.title}>Subjects</Text>
+                <TouchableOpacity
+                  style={styles.addButton}
+                  activeOpacity={0.8}
+                  onPress={handleOpenSheet}
+                >
+                  <LinearGradient
+                    colors={[accent.primary, accent.primaryHover]}
+                    style={styles.addButtonGradient}
+                  >
+                    <Ionicons name="add" size={20} color={palette.white} />
+                    <Text style={styles.addButtonText}>New</Text>
+                  </LinearGradient>
+                </TouchableOpacity>
+              </View>
               <Text style={styles.subtitle}>
                 {subjects.length} active subjects this semester
               </Text>
             </View>
-            <TouchableOpacity style={styles.addButton} activeOpacity={0.8} onPress={handleOpenSheet}>
-              <LinearGradient
-                colors={[accent.primary, accent.primaryHover]}
-                style={styles.addButtonGradient}
-              >
-                <Ionicons name="add" size={20} color="#fff" />
-                <Text style={styles.addButtonText}>New</Text>
-              </LinearGradient>
-            </TouchableOpacity>
           </View>
         </View>
 
         {/* Bento Grid */}
         <View style={styles.bentoGrid}>
           {subjects.map((subject, index) => {
-            const subjectRecords = records.filter(r => r.subject_id === subject.id);
-            const totalConducted = subjectRecords.length;
-            const totalAttended = subjectRecords.filter(r => r.status === 'present').length;
-            
-            const percentage = calculatePercentage(totalAttended, totalConducted);
-            const status = getAttendanceStatus(percentage, subject.target_threshold);
-            
-            // Bento sizing logic: make every 3rd item span full width (if not on large desktop)
-            const isFullWidth = !isLargeScreen && index % 3 === 0;
+            const subjectRecords = records.filter(
+              (r) => r.subject_id === subject.id,
+            );
+            const totalConducted = subjectRecords.filter((r) => r.status !== "cancelled").length;
+            const totalAttended = subjectRecords.filter(
+              (r) => r.status === "present",
+            ).length;
+
+            const percentage = calculatePercentage(
+              totalAttended,
+              totalConducted,
+            );
+            const _status = getAttendanceStatus(
+              percentage,
+              subject.target_threshold,
+            );
 
             return (
               <TouchableOpacity
@@ -221,7 +299,7 @@ export default function SubjectsScreen() {
                 onPress={() => handleEditSubject(subject)}
                 style={[
                   styles.bentoCard,
-                  isFullWidth ? styles.bentoCardFull : styles.bentoCardHalf,
+                  isTablet ? styles.bentoCardHalf : styles.bentoCardFull,
                   {
                     borderTopColor: subject.color,
                     borderTopWidth: 2,
@@ -230,7 +308,7 @@ export default function SubjectsScreen() {
               >
                 {/* Glow effect matching subject color */}
                 <LinearGradient
-                  colors={[subject.color + '15', 'transparent']}
+                  colors={[subject.color + "15", "transparent"]}
                   style={StyleSheet.absoluteFill}
                 />
 
@@ -240,17 +318,23 @@ export default function SubjectsScreen() {
                       {subject.short_name}
                     </Text>
                   </View>
-                  <Ionicons name="ellipsis-horizontal" size={20} color={textColors.tertiary} />
+                  <Ionicons
+                    name="ellipsis-horizontal"
+                    size={20}
+                    color={textColors.tertiary}
+                  />
                 </View>
 
-                <Text style={styles.subjectName} numberOfLines={isFullWidth ? 1 : 2}>
+                <Text style={styles.subjectName} numberOfLines={1}>
                   {subject.name}
                 </Text>
 
                 <View style={styles.cardBottom}>
                   <View style={styles.targetSection}>
                     <Text style={styles.targetLabel}>TARGET</Text>
-                    <Text style={styles.targetValue}>{subject.target_threshold}%</Text>
+                    <Text style={styles.targetValue}>
+                      {subject.target_threshold}%
+                    </Text>
                   </View>
 
                   <View style={styles.currentSection}>
@@ -264,7 +348,7 @@ export default function SubjectsScreen() {
         </View>
 
         {/* Bottom padding for nav bar */}
-        <View style={{ height: layout.bottomNavHeight + spacing['2xl'] }} />
+        <View style={{ height: layout.bottomNavHeight + spacing["2xl"] }} />
       </ScrollView>
 
       {/* Bottom Sheet Modal */}
@@ -275,8 +359,8 @@ export default function SubjectsScreen() {
         onSave={handleSaveSubject}
         onDelete={handleDeleteSubject}
       />
-      
-      <SemesterSwitchSheet 
+
+      <SemesterSwitchSheet
         visible={semesterSheetVisible}
         onClose={() => setSemesterSheetVisible(false)}
         onSwitch={loadData}
@@ -297,18 +381,18 @@ const styles = StyleSheet.create({
 
   // ── Header
   header: {
-    paddingTop: Platform.OS === 'web' ? spacing['3xl'] : spacing.xl,
+    paddingTop: Platform.OS === "web" ? spacing["3xl"] : spacing.xl,
     paddingHorizontal: layout.screenPaddingH,
     marginBottom: spacing.xl,
   },
   semesterBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     backgroundColor: glass.subtle,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
     borderRadius: radius.full,
-    alignSelf: 'flex-start',
+    alignSelf: "flex-start",
     marginBottom: spacing.lg,
     borderWidth: 1,
     borderColor: border.default,
@@ -319,20 +403,18 @@ const styles = StyleSheet.create({
     color: textColors.secondary,
     marginLeft: spacing.sm,
     marginRight: spacing.xs,
-    textTransform: 'uppercase',
+    textTransform: "uppercase",
     letterSpacing: 0.5,
   },
   semesterEditButton: {
     padding: 2,
   },
   headerTop: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
     marginBottom: spacing.xl,
   },
   title: {
     ...textStyle.pageTitle,
+    color: textColors.primary,
     marginBottom: spacing.xs,
   },
   subtitle: {
@@ -343,17 +425,17 @@ const styles = StyleSheet.create({
 
   // ── Action Bar
   actionBar: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
+    flexDirection: "row",
+    justifyContent: "flex-end",
     marginBottom: spacing.xl,
   },
   addButton: {
     borderRadius: radius.full,
-    overflow: 'hidden',
+    overflow: "hidden",
   },
   addButtonGradient: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     paddingHorizontal: spacing.xl,
     paddingVertical: spacing.md,
     gap: spacing.sm,
@@ -361,40 +443,40 @@ const styles = StyleSheet.create({
   addButtonText: {
     fontFamily: fontFamily.semiBold,
     fontSize: fontSize.sm,
-    color: '#fff',
+    color: palette.white,
   },
 
   // ── Bento Grid
   bentoGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
+    flexDirection: "row",
+    flexWrap: "wrap",
     gap: spacing.md,
-    justifyContent: 'space-between',
+    justifyContent: "space-between",
   },
   bentoCard: {
     backgroundColor: glass.medium,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.05)',
+    borderColor: "rgba(255,255,255,0.05)",
     borderRadius: radius.xl,
     padding: spacing.lg,
-    overflow: 'hidden',
-    position: 'relative',
+    overflow: "hidden",
+    position: "relative",
     ...shadow.low,
   },
   bentoCardFull: {
-    width: '100%',
+    width: "100%",
     minHeight: 140,
   },
   bentoCardHalf: {
-    width: isLargeScreen ? '31%' : '47.5%', // 3 cols on desktop, 2 on mobile
+    width: "47.5%",
     minHeight: 160,
   },
 
   // ── Card Content
   cardHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
     marginBottom: spacing.md,
   },
   shortNameBadge: {
@@ -403,7 +485,7 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     borderRadius: radius.sm,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.03)',
+    borderColor: "rgba(255,255,255,0.03)",
   },
   shortName: {
     fontFamily: fontFamily.bold,
@@ -417,10 +499,10 @@ const styles = StyleSheet.create({
     marginBottom: spacing.xl,
   },
   cardBottom: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-end',
-    marginTop: 'auto',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-end",
+    marginTop: "auto",
   },
   targetSection: {
     gap: 2,
@@ -437,7 +519,7 @@ const styles = StyleSheet.create({
     color: textColors.secondary,
   },
   currentSection: {
-    alignItems: 'flex-end',
+    alignItems: "flex-end",
     gap: 2,
   },
   currentLabel: {
