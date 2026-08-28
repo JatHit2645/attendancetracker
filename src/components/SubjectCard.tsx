@@ -115,10 +115,9 @@ export default React.memo(function SubjectCard({
     <View
       style={styles.cardContainer}
       accessible={true}
-      accessibilityRole="button"
       accessibilityLabel={`${subject.name}. ${percentage}%. ${statusLabel}. ${helperText}`}
     >
-      <TouchableOpacity hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} accessibilityRole="button"         activeOpacity={0.7}
+      <TouchableOpacity hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}        activeOpacity={0.7}
         onPress={onPress}
         style={[styles.cardContent, { borderLeftColor: subjectColor }]}
       >

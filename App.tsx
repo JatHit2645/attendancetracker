@@ -256,18 +256,18 @@ export default function App() {
   };
 
 
-  return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
-      <SafeAreaProvider>
-        <BottomSheetModalProvider>
-          <SafeAreaView style={styles.container}>
-            {renderContent()}
-            <StatusBar style="light" />
-          </SafeAreaView>
-        </BottomSheetModalProvider>
-      </SafeAreaProvider>
-    </GestureHandlerRootView>
-  );
+    return (
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        <SafeAreaProvider>
+          <BottomSheetModalProvider>
+            <View style={styles.container}>
+              {renderContent()}
+              <StatusBar style="light" />
+            </View>
+          </BottomSheetModalProvider>
+        </SafeAreaProvider>
+      </GestureHandlerRootView>
+    );
 }
 
 const styles = StyleSheet.create({

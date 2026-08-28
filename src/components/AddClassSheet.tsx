@@ -10,6 +10,7 @@ import {
   ScrollView,
   TextInput,
   TouchableWithoutFeedback,
+SafeAreaView,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
@@ -21,6 +22,7 @@ import {
   text as textColors,
   accent,
   shadow,
+  feedback,
 } from '../theme/colors';
 import { fontFamily, fontSize } from '../theme/typography';
 import { spacing, radius } from '../theme/spacing';
@@ -55,11 +57,13 @@ interface AddClassSheetProps {
     date?: string;
   }) => void;
   onDelete?: () => void;
+  slots?: any[];
+  initialDayOfWeek?: string;
 }
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
-export default function AddClassSheet({ visible, subjects, semesters, initialSemesterId, initialData, onClose, onSave, onDelete }: AddClassSheetProps) {
+export default function AddClassSheet({ visible, subjects, semesters, initialSemesterId, initialData, onClose, onSave, onDelete, slots = [], initialDayOfWeek }: AddClassSheetProps) {
   const [selectedSemesterId, setSelectedSemesterId] = useState(initialSemesterId || '');
   const [selectedSubjectId, setSelectedSubjectId] = useState('');
   const [selectedDay, setSelectedDay] = useState('Monday');
@@ -73,21 +77,79 @@ export default function AddClassSheet({ visible, subjects, semesters, initialSem
 
   useEffect(() => {
     if (visible) {
+      let defaultDay = 'Monday';
+      // Match the shortened 'Tue' from TimetableScreen to full 'Tuesday'
+      if (initialDayOfWeek) {
+        const fullDayMap: Record<string, string> = {
+          Mon: 'Monday', Tue: 'Tuesday', Wed: 'Wednesday', Thu: 'Thursday', 
+          Fri: 'Friday', Sat: 'Saturday', Sun: 'Sunday'
+        };
+        defaultDay = fullDayMap[initialDayOfWeek] || initialDayOfWeek;
+      }
+
       if (initialData) {
         setSelectedSubjectId(initialData.subjectId);
         setSelectedDay(initialData.dayOfWeek);
         setStartTime(initialData.startTime);
         setEndTime(initialData.endTime);
         setRoomNumber(initialData.roomNumber === 'TBA' ? '' : initialData.roomNumber);
+        setClassType((initialData.class_type as any) || 'theory');
+        setDefaultTeacher(initialData.default_teacher || '');
+        setDateText(initialData.date || '');
       } else if (subjects.length > 0) {
         setSelectedSubjectId(subjects[0].id);
-        setSelectedDay('Monday');
-        setStartTime('09:00');
-        setEndTime('10:00');
+        setSelectedDay(defaultDay);
+        setClassType('theory');
+        setDefaultTeacher('');
+        setDateText('');
         setRoomNumber('');
+        
+        // Auto-fill logic when opening the sheet
+        const dayMap: Record<string, number> = {
+          Monday: 1, Tuesday: 2, Wednesday: 3, Thursday: 4, Friday: 5, Saturday: 6, Sunday: 0
+        };
+        const dayIndex = dayMap[defaultDay];
+        
+        const currentDaySlots = slots.filter(s => s.day_of_week === dayIndex);
+        const mondaySlots = slots
+          .filter(s => s.day_of_week === 1)
+          .sort((a, b) => a.start_time.localeCompare(b.start_time));
+        
+        const slotIndexToMatch = currentDaySlots.length;
+        if (mondaySlots.length > slotIndexToMatch) {
+          const referenceSlot = mondaySlots[slotIndexToMatch];
+          setStartTime(referenceSlot.start_time.substring(0, 5));
+          setEndTime(referenceSlot.end_time.substring(0, 5));
+        } else {
+          setStartTime('09:00');
+          setEndTime('10:00');
+        }
       }
     }
-  }, [visible, subjects, initialData]);
+  }, [visible, subjects, initialData, initialDayOfWeek, slots]);
+
+  // Keep the auto-fill responsive when they change the day INSIDE the sheet
+  useEffect(() => {
+    if (visible && !initialData && slots.length > 0) {
+      const dayMap: Record<string, number> = {
+        Monday: 1, Tuesday: 2, Wednesday: 3, Thursday: 4, Friday: 5, Saturday: 6, Sunday: 0
+      };
+      const dayIndex = dayMap[selectedDay];
+      
+      const currentDaySlots = slots.filter(s => s.day_of_week === dayIndex);
+      const mondaySlots = slots
+        .filter(s => s.day_of_week === 1) // 1 = Monday
+        .sort((a, b) => a.start_time.localeCompare(b.start_time));
+      
+      const slotIndexToMatch = currentDaySlots.length;
+      
+      if (mondaySlots.length > slotIndexToMatch) {
+        const referenceSlot = mondaySlots[slotIndexToMatch];
+        setStartTime(referenceSlot.start_time.substring(0, 5));
+        setEndTime(referenceSlot.end_time.substring(0, 5));
+      }
+    }
+  }, [selectedDay]);
 
   const formatTimeInput = (text: string, prevText: string) => {
     if (text.length < prevText.length) return text;
@@ -176,9 +238,10 @@ export default function AddClassSheet({ visible, subjects, semesters, initialSem
         </TouchableWithoutFeedback>
 
         <KeyboardAvoidingView
-          behavior="padding"
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
           style={styles.keyboardContainer}
         >
+          <SafeAreaView style={{ flex: 1, justifyContent: 'flex-end' }}>
           <View style={[styles.sheetContainer, { maxHeight: '85%' }]}>
             {Platform.OS !== 'web' && (
               <View style={styles.handleContainer}>
@@ -348,11 +411,12 @@ export default function AddClassSheet({ visible, subjects, semesters, initialSem
                     onPress={() => onDelete()}
                     activeOpacity={0.8}
                   >
-                    <Ionicons name="trash-outline" size={20} color={'#DC2626'} />
+                    <Ionicons name="trash-outline" size={20} color={feedback.error} />
                   </TouchableOpacity>
                 )}
                 </View>
           </View>
+        </SafeAreaView>
         </KeyboardAvoidingView>
       </View>
     </Modal>
@@ -518,10 +582,10 @@ const styles = StyleSheet.create({
     width: 52,
     height: 52,
     borderRadius: radius.lg,
-    backgroundColor: '#DC2626' + '15',
+    backgroundColor: feedback.error + '15',
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: '#DC2626' + '40',
+    borderColor: feedback.error + '40',
   },
 });

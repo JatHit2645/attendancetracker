@@ -36,6 +36,7 @@ import AddClassSheet from "../../components/AddClassSheet";
 import TimetableManager from "../../components/TimetableManager";
 import { Database } from "../../lib/database.types";
 import { supabase } from "../../lib/supabase";
+import { NotificationService } from "../../services/NotificationService";
 
 type TimetableSlot = Database["public"]["Tables"]["timetable_slots"]["Row"];
 type SubjectRow = Database["public"]["Tables"]["subjects"]["Row"];
@@ -93,8 +94,30 @@ export default function TimetableScreen({ isActive = true }: { isActive?: boolea
       if (targetVersionId) {
         const fetchedSlots = await DatabaseService.fetchTimetableByVersion(targetVersionId);
         setSlots(fetchedSlots);
+
+        const mappedSlots = fetchedSlots.map(slot => {
+           const subject = subjectMap[slot.subject_id];
+           let teacherStr = slot.default_teacher || "";
+           try {
+             if (teacherStr.startsWith('{')) {
+               const obj = JSON.parse(teacherStr);
+               teacherStr = obj.s || obj.n;
+             }
+           } catch(e) {}
+           
+           return {
+             id: slot.id,
+             subjectName: subject?.name || "Unknown Subject",
+             roomNumber: slot.room_number || "TBA",
+             teacher: teacherStr,
+             dayOfWeek: slot.day_of_week,
+             startTime: slot.start_time
+           };
+        });
+        NotificationService.schedulePreClassAlerts(mappedSlots);
       } else {
         setSlots([]);
+        NotificationService.schedulePreClassAlerts([]);
       }
 
     } catch (error) {
@@ -232,9 +255,7 @@ export default function TimetableScreen({ isActive = true }: { isActive?: boolea
       });
 
       if (overlap) {
-        alert(
-          "This time slot overlaps with an existing class in your timetable!",
-        );
+        Alert.alert("This time slot overlaps with an existing class in your timetable!");
         return;
       }
 
@@ -288,46 +309,37 @@ export default function TimetableScreen({ isActive = true }: { isActive?: boolea
       handleCloseSheet();
       loadData();
     } catch (e: any) {
-      alert("Error saving class: " + e.message);
+      Alert.alert("Error", e.message || "Failed to save class");
     }
   }, [slots, selectedSlot, handleCloseSheet, loadData, activeVersionId]);
 
+  const handleDeleteSlot = async (slotId: string) => {
+    Alert.alert(
+      "Delete Class",
+      "Are you sure you want to permanently delete this timetable entry?",
+      [
+        { text: "Cancel", style: "cancel" },
+        { 
+          text: "Delete", 
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await DatabaseService.deleteTimetableSlot(slotId);
+              setSlots(slots.filter((s) => s.id !== slotId));
+              setSelectedSlot(null);
+              handleCloseSheet();
+              loadData();
+            } catch (e: any) {
+              Alert.alert("Error deleting class: " + e.message);
+            }
+          }
+        }
+      ]
+    );
+  };
+
   const handleDeleteClass = useCallback(async () => {
     if (!selectedSlot) return;
-
-    const confirmDelete =
-      Platform.OS === "web"
-        ? window.confirm(
-            "Are you sure you want to permanently delete this timetable entry?",
-          )
-        : await new Promise<boolean>((resolve) => {
-            Alert.alert(
-              "Delete Class?",
-              "Are you sure you want to permanently remove this scheduled slot?",
-              [
-                {
-                  text: "Cancel",
-                  style: "cancel",
-                  onPress: () => resolve(false),
-                },
-                {
-                  text: "Delete",
-                  style: "destructive",
-                  onPress: () => resolve(true),
-                },
-              ],
-            );
-          });
-
-    if (confirmDelete) {
-      try {
-        await DatabaseService.deleteTimetableSlot(selectedSlot.id);
-        handleCloseSheet();
-        loadData();
-      } catch (e: any) {
-        alert("Error deleting class: " + e.message);
-      }
-    }
   }, [selectedSlot, handleCloseSheet, loadData]);
 
   return (
@@ -338,14 +350,15 @@ export default function TimetableScreen({ isActive = true }: { isActive?: boolea
           <Text style={styles.title}>Timetable</Text>
           <Text style={styles.subtitle}>Your weekly academic schedule.</Text>
         </View>
-        <TouchableOpacity style={styles.managerBtn} onPress={() => setManagerVisible(true)}>
-          <Ionicons name="calendar-outline" size={20} color={accent.primary} />
-          <Text style={styles.managerBtnText}>Versions</Text>
-        </TouchableOpacity>
       </View>
 
       {/* Action Bar */}
       <View style={styles.actionBar}>
+        <TouchableOpacity style={styles.managerBtn} onPress={() => setManagerVisible(true)}>
+          <Ionicons name="calendar-outline" size={20} color={textColors.secondary} />
+          <Text style={styles.managerBtnText}>Versions</Text>
+        </TouchableOpacity>
+        
         <TouchableOpacity
           style={styles.addButton}
           activeOpacity={0.8}
@@ -474,9 +487,11 @@ export default function TimetableScreen({ isActive = true }: { isActive?: boolea
 
       <AddClassSheet
         visible={sheetVisible}
+        slots={slots}
         semesters={semesters}
         subjects={Object.values(subjects)}
         initialSemesterId={activeSemesterId}
+        initialDayOfWeek={selectedDay}
         initialData={
           selectedSlot
             ? {
@@ -492,9 +507,11 @@ export default function TimetableScreen({ isActive = true }: { isActive?: boolea
                   "Friday",
                   "Saturday",
                 ][selectedSlot.day_of_week],
-                startTime: selectedSlot.start_time.substring(0, 5),
-                endTime: selectedSlot?.end_time,
-                roomNumber: selectedSlot?.room_number,
+                startTime: selectedSlot.start_time,
+                endTime: selectedSlot.end_time,
+                roomNumber: selectedSlot.room_number || "",
+                class_type: selectedSlot.class_type,
+                default_teacher: selectedSlot.default_teacher,
               }
             : undefined
         }
@@ -512,6 +529,27 @@ export default function TimetableScreen({ isActive = true }: { isActive?: boolea
           setManagerVisible(false);
         }}
       />
+      <TouchableOpacity
+        style={{
+          position: 'absolute',
+          bottom: 100,
+          right: 24,
+          backgroundColor: '#3b82f6',
+          width: 56,
+          height: 56,
+          borderRadius: 28,
+          alignItems: 'center',
+          justifyContent: 'center',
+          shadowColor: '#3b82f6',
+          shadowOffset: { width: 0, height: 4 },
+          shadowOpacity: 0.3,
+          shadowRadius: 8,
+          elevation: 5,
+        }}
+        onPress={() => DeviceEventEmitter.emit('navigate_tab', 'campus_map')}
+      >
+        <Ionicons name="map-outline" size={28} color="#fff" />
+      </TouchableOpacity>
     </View>
   );
 }
@@ -561,6 +599,8 @@ const styles = StyleSheet.create({
   actionBar: {
     flexDirection: "row",
     justifyContent: "flex-end",
+    alignItems: "center",
+    gap: spacing.md,
     paddingHorizontal: layout.screenPaddingH,
     marginBottom: spacing.lg,
   },

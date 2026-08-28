@@ -55,6 +55,18 @@ export const palette = {
   red: {
     500: '#EF4444',
     600: '#DC2626',
+  },
+  blue: {
+    500: '#3b82f6',
+  },
+  lime: {
+    500: '#84cc16',
+  },
+  orange: {
+    500: '#f97316',
+  },
+  yellow: {
+    500: '#eab308',
   }
 } as const;
 
@@ -129,6 +141,13 @@ export const attendance = {
     light: `rgba(245, 158, 11, ${opacity.heavy})`,
     surface: `rgba(245, 158, 11, ${opacity.medium})`,
   },
+  proxy: {
+    base: palette.blue[500],
+    light: `rgba(59, 130, 246, ${opacity.heavy})`,
+    surface: `rgba(59, 130, 246, ${opacity.medium})`,
+  },
+
+
   missed: {
     base: palette.violet[500],
     light: `rgba(139, 92, 246, ${opacity.heavy})`,
@@ -212,8 +231,8 @@ export const shadow = {
 
 // ─── Heat Colors ───────────────────────────────────────────────────
 export const heat = {
-  limeHeat: '#84cc16',
-  orangeHeat: '#f97316',
-  yellowHeat: '#eab308',
+  limeHeat: palette.lime[500],
+  orangeHeat: palette.orange[500],
+  yellowHeat: palette.yellow[500],
 } as const;
 

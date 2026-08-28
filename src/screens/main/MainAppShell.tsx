@@ -12,6 +12,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { View, StyleSheet, DeviceEventEmitter } from 'react-native';
+import { BackHandler } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import BottomTabBar, { TabName } from '../../components/BottomTabBar';
 import DashboardScreen from './DashboardScreen';
@@ -19,12 +20,35 @@ import SubjectsScreen from './SubjectsScreen';
 import TimetableScreen from './TimetableScreen';
 import AnalyticsScreen from './AnalyticsScreen';
 import ProfileScreen from './ProfileScreen';
+import CampusMapScreen from './CampusMapScreen';
 
 import { canvas } from '../../theme/colors';
 import { DatabaseService } from '../../services/DatabaseService';
 
 export default function MainAppShell() {
   const [activeTab, setActiveTab] = useState<TabName>('dashboard');
+  const [mountedTabs, setMountedTabs] = useState<Set<TabName>>(new Set(['dashboard']));
+
+  useEffect(() => {
+    setMountedTabs(prev => {
+      if (prev.has(activeTab)) return prev;
+      const newSet = new Set(prev);
+      newSet.add(activeTab);
+      return newSet;
+    });
+  }, [activeTab]);
+
+  useEffect(() => {
+    const onBackPress = () => {
+      if (activeTab !== 'dashboard') {
+        setActiveTab('dashboard');
+        return true;
+      }
+      return false;
+    };
+    const sub = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+    return () => sub.remove();
+  }, [activeTab]);
 
   useEffect(() => {
     const sub = DeviceEventEmitter.addListener('navigate_tab', (tab: TabName) => {
@@ -67,21 +91,36 @@ export default function MainAppShell() {
   return (
     <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
       <View style={styles.contentContainer}>
-        <View style={[styles.screenWrapper, activeTab !== 'dashboard' && styles.hidden]}>
-          <DashboardScreen isActive={activeTab === 'dashboard'} />
-        </View>
-        <View style={[styles.screenWrapper, activeTab !== 'subjects' && styles.hidden]}>
-          <SubjectsScreen isActive={activeTab === 'subjects'} />
-        </View>
-        <View style={[styles.screenWrapper, activeTab !== 'timetable' && styles.hidden]}>
-          <TimetableScreen isActive={activeTab === 'timetable'} />
-        </View>
-        <View style={[styles.screenWrapper, activeTab !== 'analytics' && styles.hidden]}>
-          <AnalyticsScreen isActive={activeTab === 'analytics'} />
-        </View>
-        <View style={[styles.screenWrapper, activeTab !== 'profile' && styles.hidden]}>
-          <ProfileScreen isActive={activeTab === 'profile'} />
-        </View>
+        {mountedTabs.has('dashboard') && (
+          <View style={[styles.screenWrapper, activeTab !== 'dashboard' && styles.hidden]}>
+            <DashboardScreen isActive={activeTab === 'dashboard'} />
+          </View>
+        )}
+        {mountedTabs.has('subjects') && (
+          <View style={[styles.screenWrapper, activeTab !== 'subjects' && styles.hidden]}>
+            <SubjectsScreen isActive={activeTab === 'subjects'} />
+          </View>
+        )}
+        {mountedTabs.has('timetable') && (
+          <View style={[styles.screenWrapper, activeTab !== 'timetable' && styles.hidden]}>
+            <TimetableScreen isActive={activeTab === 'timetable'} />
+          </View>
+        )}
+        {mountedTabs.has('analytics') && (
+          <View style={[styles.screenWrapper, activeTab !== 'analytics' && styles.hidden]}>
+            <AnalyticsScreen isActive={activeTab === 'analytics'} />
+          </View>
+        )}
+        {mountedTabs.has('profile') && (
+          <View style={[styles.screenWrapper, activeTab !== 'profile' && styles.hidden]}>
+            <ProfileScreen isActive={activeTab === 'profile'} />
+          </View>
+        )}
+        {mountedTabs.has('campus_map' as any) && (
+          <View style={[styles.screenWrapper, activeTab !== 'campus_map' as any && styles.hidden]}>
+            <CampusMapScreen />
+          </View>
+        )}
       </View>
       <BottomTabBar activeTab={activeTab} onTabPress={setActiveTab} />
     </SafeAreaView>

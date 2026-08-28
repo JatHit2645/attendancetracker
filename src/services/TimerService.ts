@@ -14,6 +14,7 @@ export interface TimerState {
   subjectName: string;
   subjectShortName: string;
   startTimeIso: string; // ISO string in UTC, but displayed/processed as IST
+  mockEndTimeIso?: string; // Optional end time for backdated entries
   color: string;
 }
 

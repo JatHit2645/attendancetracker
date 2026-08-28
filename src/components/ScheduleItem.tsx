@@ -135,7 +135,6 @@ export default function ScheduleItem({ item, isLast, onMarkAttendance }: Schedul
       <Pressable
         onPress={toggleExpand}
         accessible={true}
-        accessibilityRole="button"
         accessibilityState={{ expanded }}
         accessibilityLabel={`${item.subjectName}, from ${item.startTime} to ${item.endTime}. Status: ${config.label}. Double tap to ${expanded ? 'collapse' : 'expand'} options.`}
         style={[

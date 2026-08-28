@@ -92,13 +92,15 @@ export function lecturesNeededForTarget(
   conducted: number,
   threshold: number
 ): number {
-  // Formula: (attended + x) / (conducted + x) >= threshold/100
-  // x >= (threshold * conducted - 100 * attended) / (100 - threshold)
+  if (threshold >= 100) {
+    return Math.max(0, conducted - attended); // If you want 100%, you can't miss ANY, but you can only make up for past misses if you assume you attend everything. Actually, if you already missed one, you can never reach 100%. So:
+  }
+  
   const numerator = (threshold * conducted) / 100 - attended;
   const denominator = 1 - threshold / 100;
-  if (denominator <= 0) return Infinity;
+  if (denominator <= 0) return 999;
   const needed = Math.ceil(numerator / denominator);
-  return Math.max(0, needed);
+  return needed > 0 ? needed : 0;
 }
 
 /** Calculate how many lectures can be missed while staying above threshold */

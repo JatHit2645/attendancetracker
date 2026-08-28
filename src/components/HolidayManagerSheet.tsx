@@ -58,10 +58,15 @@ export default function HolidayManagerSheet({ visible, semesterId, onClose, onRe
   const [fetching, setFetching] = useState(false);
 
   const fetchHolidaysList = async () => {
-    if (!semesterId) return;
+    let targetSemId = semesterId;
+    if (!targetSemId) {
+      const activeSem = await DatabaseService.fetchActiveSemester();
+      if (activeSem) targetSemId = activeSem.id;
+    }
+    if (!targetSemId) return;
     try {
       setFetching(true);
-      const data = await DatabaseService.fetchHolidays(semesterId);
+      const data = await DatabaseService.fetchHolidays(targetSemId);
       setHolidays(data || []);
     } catch (e) {
       console.warn('Failed to fetch holidays in sheet', e);
@@ -122,12 +127,18 @@ export default function HolidayManagerSheet({ visible, semesterId, onClose, onRe
   };
 
   const handleSave = async () => {
-    if (!title.trim() || !startDate.trim() || (!editingHoliday && !endDate.trim())) {
-      Alert.alert('Error', 'Please fill in all date fields (YYYY/MM/DD)');
+    if (!title.trim() || !startDate.trim()) {
+      Alert.alert('Error', 'Please fill in the title and start date (YYYY/MM/DD)');
       return;
     }
-    if (!semesterId) {
-      Alert.alert('Error', 'No active semester');
+    let targetSemesterId = semesterId;
+    if (!targetSemesterId) {
+      const activeSem = await DatabaseService.fetchActiveSemester();
+      if (activeSem) targetSemesterId = activeSem.id;
+    }
+
+    if (!targetSemesterId) {
+      Alert.alert('Error', 'No active semester found');
       return;
     }
 
@@ -145,7 +156,7 @@ export default function HolidayManagerSheet({ visible, semesterId, onClose, onRe
       } else {
         // Add mode (allows date ranges)
         const start = new Date(startDate.replace(/\//g, '-'));
-        const end = endDate ? new Date(endDate.replace(/\//g, '-')) : start;
+        const end = endDate.trim() ? new Date(endDate.replace(/\//g, '-')) : start;
         
         if (start > end) {
           Alert.alert('Error', 'End date must be after start date');
@@ -159,7 +170,7 @@ export default function HolidayManagerSheet({ visible, semesterId, onClose, onRe
         while (current <= end) {
           inserts.push({
             user_id: user.id,
-            semester_id: semesterId,
+            semester_id: targetSemesterId,
             date: current.toISOString().split('T')[0],
             title: title.trim(),
             type: 'holiday' as const

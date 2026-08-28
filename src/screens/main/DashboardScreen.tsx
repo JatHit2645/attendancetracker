@@ -182,7 +182,7 @@ export default function DashboardScreen({ isActive = true }: { isActive?: boolea
       supabase.removeChannel(subjectsSubscription);
       supabase.removeChannel(semestersSubscription);
     };
-  }, [loadData, isActive]);
+  }, [isActive]);
 
   useEffect(() => {
     const sub = DeviceEventEmitter.addListener("semesterChanged", () => {

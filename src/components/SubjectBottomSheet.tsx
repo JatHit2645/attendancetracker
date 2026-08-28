@@ -43,6 +43,8 @@ export default function SubjectBottomSheet({ visible, initialData, onClose, onSa
   const [teachers, setTeachers] = React.useState<string[]>([]);
   const [teacherInput, setTeacherInput] = React.useState('');
   const [teacherShortName, setTeacherShortName] = React.useState('');
+  const [editingOldTeacher, setEditingOldTeacher] = React.useState<string | null>(null);
+  const [renamedTeachers, setRenamedTeachers] = React.useState<{ oldName: string; newName: string }[]>([]);
 
   React.useEffect(() => {
     if (visible && initialData) {
@@ -58,6 +60,8 @@ export default function SubjectBottomSheet({ visible, initialData, onClose, onSa
     }
     setTeacherInput('');
     setTeacherShortName('');
+    setEditingOldTeacher(null);
+    setRenamedTeachers([]);
   }, [visible, initialData]);
 
   const handleSave = () => {
@@ -78,6 +82,8 @@ export default function SubjectBottomSheet({ visible, initialData, onClose, onSa
     setTeachers([]);
     setTeacherInput('');
     setTeacherShortName('');
+    setEditingOldTeacher(null);
+    setRenamedTeachers([]);
     onClose();
   };
 
@@ -86,14 +92,38 @@ export default function SubjectBottomSheet({ visible, initialData, onClose, onSa
     const tShort = teacherShortName.trim().toUpperCase();
     if (!tName) return;
     
-    // Store as stringified JSON if short name exists, else just string (for backward compatibility)
     const newEntry = tShort ? JSON.stringify({ n: tName, s: tShort }) : tName;
     
-    if (!teachers.includes(newEntry)) {
-      setTeachers([...teachers, newEntry]);
+    if (editingOldTeacher) {
+      if (editingOldTeacher !== newEntry) {
+        setTeachers(teachers.map(t => t === editingOldTeacher ? newEntry : t));
+        setRenamedTeachers([...renamedTeachers, { oldName: editingOldTeacher, newName: newEntry }]);
+      }
+      setEditingOldTeacher(null);
       setTeacherInput('');
       setTeacherShortName('');
+    } else {
+      if (!teachers.includes(newEntry)) {
+        setTeachers([...teachers, newEntry]);
+        setTeacherInput('');
+        setTeacherShortName('');
+      }
     }
+  };
+
+  const handleEditTeacher = (teacher: string) => {
+    setEditingOldTeacher(teacher);
+    let tName = teacher;
+    let tShort = '';
+    try {
+      if (teacher.startsWith('{')) {
+        const obj = JSON.parse(teacher);
+        tName = obj.n;
+        tShort = obj.s;
+      }
+    } catch(e) {}
+    setTeacherInput(tName);
+    setTeacherShortName(tShort);
   };
 
   const handleRemoveTeacher = (teacher: string) => {
@@ -220,7 +250,7 @@ export default function SubjectBottomSheet({ visible, initialData, onClose, onSa
                       />
                     </View>
                     <TouchableOpacity onPress={handleAddTeacher} style={styles.addTeacherBtn}>
-                      <Ionicons name="add" size={20} color={palette.white} />
+                      <Ionicons name={editingOldTeacher ? "checkmark" : "add"} size={20} color={palette.white} />
                     </TouchableOpacity>
                   </View>
 
@@ -235,8 +265,11 @@ export default function SubjectBottomSheet({ visible, initialData, onClose, onSa
                           }
                         } catch(e) {}
                         return (
-                          <View key={index} style={styles.teacherChip}>
+                          <View key={index} style={[styles.teacherChip, editingOldTeacher === t && { borderColor: '#3b82f6', borderWidth: 2 }]}>
                             <Text style={styles.teacherChipText}>{display}</Text>
+                            <TouchableOpacity onPress={() => handleEditTeacher(t)} style={[styles.teacherChipRemove, { marginLeft: 8 }]}>
+                              <Ionicons name="pencil" size={14} color={textColors.secondary} />
+                            </TouchableOpacity>
                             <TouchableOpacity onPress={() => handleRemoveTeacher(t)} style={styles.teacherChipRemove}>
                               <Ionicons name="close-circle" size={16} color={textColors.tertiary} />
                             </TouchableOpacity>

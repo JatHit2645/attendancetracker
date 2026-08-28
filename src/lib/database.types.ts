@@ -113,19 +113,19 @@ export type Database = {
           user_id: string
           semester_id: string
           name: string
-          start_date: string
-          end_date: string | null
           is_active: boolean | null
+          start_date: string | null
+          end_date: string | null
           created_at: string
         }
         Insert: {
           id?: string
           user_id?: string
           semester_id: string
-          name: string
-          start_date: string
-          end_date?: string | null
+          name?: string
           is_active?: boolean | null
+          start_date?: string | null
+          end_date?: string | null
           created_at?: string
         }
         Update: {
@@ -133,11 +133,86 @@ export type Database = {
           user_id?: string
           semester_id?: string
           name?: string
-          start_date?: string
-          end_date?: string | null
           is_active?: boolean | null
+          start_date?: string | null
+          end_date?: string | null
           created_at?: string
         }
+        Relationships: []
+      }
+      academic_tasks: {
+        Row: {
+          id: string
+          user_id: string
+          subject_id: string | null
+          semester_id: string | null
+          title: string
+          description: string | null
+          task_type: "assignment" | "exam" | "quiz" | "lab_report" | "project"
+          priority: "low" | "medium" | "high" | "critical"
+          due_date: string
+          reminder_at: string | null
+          is_completed: boolean | null
+          grade_weight: number | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id?: string
+          subject_id?: string | null
+          semester_id?: string | null
+          title: string
+          description?: string | null
+          task_type?: "assignment" | "exam" | "quiz" | "lab_report" | "project"
+          priority?: "low" | "medium" | "high" | "critical"
+          due_date: string
+          reminder_at?: string | null
+          is_completed?: boolean | null
+          grade_weight?: number | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          subject_id?: string | null
+          semester_id?: string | null
+          title?: string
+          description?: string | null
+          task_type?: "assignment" | "exam" | "quiz" | "lab_report" | "project"
+          priority?: "low" | "medium" | "high" | "critical"
+          due_date?: string
+          reminder_at?: string | null
+          is_completed?: boolean | null
+          grade_weight?: number | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      campus_buildings: {
+        Row: { id: string; name: string; total_floors: number; created_at: string }
+        Insert: { id?: string; name: string; total_floors?: number; created_at?: string }
+        Update: { id?: string; name?: string; total_floors?: number; created_at?: string }
+        Relationships: []
+      }
+      campus_floors: {
+        Row: { id: string; building_id: string; floor_number: number; floor_name: string; blueprint_svg_url: string | null; created_at: string }
+        Insert: { id?: string; building_id: string; floor_number: number; floor_name: string; blueprint_svg_url?: string | null; created_at?: string }
+        Update: { id?: string; building_id?: string; floor_number?: number; floor_name?: string; blueprint_svg_url?: string | null; created_at?: string }
+        Relationships: []
+      }
+      campus_nodes: {
+        Row: { id: string; building_id: string | null; floor_id: string | null; floor_number: number; node_name: string; node_type: string; room_number: string | null; x_coord: number; y_coord: number; is_accessible: boolean | null; created_at: string }
+        Insert: { id?: string; building_id?: string | null; floor_id?: string | null; floor_number: number; node_name: string; node_type: string; room_number?: string | null; x_coord: number; y_coord: number; is_accessible?: boolean | null; created_at?: string }
+        Update: { id?: string; building_id?: string | null; floor_id?: string | null; floor_number?: number; node_name?: string; node_type?: string; room_number?: string | null; x_coord?: number; y_coord?: number; is_accessible?: boolean | null; created_at?: string }
+        Relationships: []
+      }
+      campus_edges: {
+        Row: { id: string; building_id: string | null; from_node_id: string; to_node_id: string; weight_meters: number; is_stair_connection: boolean | null; is_bidirectional: boolean | null; created_at: string }
+        Insert: { id?: string; building_id?: string | null; from_node_id: string; to_node_id: string; weight_meters: number; is_stair_connection?: boolean | null; is_bidirectional?: boolean | null; created_at?: string }
+        Update: { id?: string; building_id?: string | null; from_node_id?: string; to_node_id?: string; weight_meters?: number; is_stair_connection?: boolean | null; is_bidirectional?: boolean | null; created_at?: string }
         Relationships: []
       }
       timetable_slots: {

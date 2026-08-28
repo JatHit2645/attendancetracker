@@ -46,55 +46,65 @@ export const letterSpacing = {
   wider: 1.2,
 } as const;
 
-// Text styles deliberately omit color so they can be context-aware
+import { text as textColors } from './colors';
+
+// Text styles now include color to fix Auth screen invisible text
 export const textStyle = {
   displayNumber: {
     fontFamily: fontFamily.extraBold,
     fontSize: fontSize.display,
     letterSpacing: letterSpacing.tightest,
     lineHeight: fontSize.display * lineHeight.tight,
+    color: textColors.primary,
   },
   pageTitle: {
     fontFamily: fontFamily.bold,
     fontSize: fontSize['2xl'],
     letterSpacing: letterSpacing.tight,
     lineHeight: fontSize['2xl'] * lineHeight.tight,
+    color: textColors.primary,
   },
   heroSubtitle: {
     fontFamily: fontFamily.medium,
     fontSize: fontSize.md,
     letterSpacing: letterSpacing.tight,
     lineHeight: fontSize.md * lineHeight.relaxed,
+    color: textColors.primary,
   },
   sectionTitle: {
     fontFamily: fontFamily.semiBold,
     fontSize: fontSize.lg,
     letterSpacing: letterSpacing.tight,
     lineHeight: fontSize.lg * lineHeight.tight,
+    color: textColors.primary,
   },
   cardTitle: {
     fontFamily: fontFamily.semiBold,
     fontSize: fontSize.md,
     letterSpacing: letterSpacing.tight,
     lineHeight: fontSize.md * lineHeight.normal,
+    color: textColors.primary,
   },
   statNumber: {
     fontFamily: fontFamily.bold,
     fontSize: fontSize.xl,
     letterSpacing: letterSpacing.tight,
     lineHeight: fontSize.xl * lineHeight.tight,
+    color: textColors.primary,
   },
   body: {
     fontFamily: fontFamily.regular,
     fontSize: fontSize.md,
     letterSpacing: letterSpacing.normal,
     lineHeight: fontSize.md * lineHeight.relaxed,
+    color: textColors.primary,
   },
   caption: {
     fontFamily: fontFamily.regular,
     fontSize: fontSize.sm,
     letterSpacing: letterSpacing.normal,
     lineHeight: fontSize.sm * lineHeight.normal,
+    color: textColors.primary,
   },
   label: {
     fontFamily: fontFamily.medium,
@@ -102,17 +112,20 @@ export const textStyle = {
     letterSpacing: letterSpacing.wider,
     textTransform: 'uppercase' as const,
     lineHeight: fontSize.xs * lineHeight.normal,
+    color: textColors.primary,
   },
   button: {
     fontFamily: fontFamily.semiBold,
     fontSize: fontSize.md,
     letterSpacing: letterSpacing.wide,
     lineHeight: fontSize.md * lineHeight.normal,
+    color: textColors.primary,
   },
   tabLabel: {
     fontFamily: fontFamily.medium,
     fontSize: 10,
     letterSpacing: 0.2,
     lineHeight: 12,
+    color: textColors.primary,
   },
 } as const;

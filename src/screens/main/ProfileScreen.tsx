@@ -33,7 +33,7 @@ import { DatabaseService } from "../../services/DatabaseService";
 import { LogbookService, LogEntry } from "../../services/LogbookService";
 import {
   RecycleBinService,
-  DeletedItem,
+  RecycleBinItem,
 } from "../../services/RecycleBinService";
 
 import * as FileSystem from "expo-file-system";
@@ -62,7 +62,7 @@ export default function ProfileScreen({ isActive = true }: { isActive?: boolean 
   // Data States
   const [semesters, setSemesters] = useState<any[]>([]);
   const [logs, setLogs] = useState<LogEntry[]>([]);
-  const [recycleItems, setRecycleItems] = useState<DeletedItem[]>([]);
+  const [recycleItems, setRecycleItems] = useState<RecycleBinItem[]>([]);
   const [loadingSemesters, setLoadingSemesters] = useState(false);
   const [loadingLogs, setLoadingLogs] = useState(false);
   const [loadingRecycle, setLoadingRecycle] = useState(false);
@@ -312,7 +312,7 @@ export default function ProfileScreen({ isActive = true }: { isActive?: boolean 
   const loadRecycleBinData = async () => {
     try {
       setLoadingRecycle(true);
-      const data = await RecycleBinService.fetchItems();
+      const data = await RecycleBinService.getDeletedItems();
       setRecycleItems(data || []);
     } catch (e) {
       console.warn("Failed to load recycle bin", e);
@@ -391,9 +391,9 @@ export default function ProfileScreen({ isActive = true }: { isActive?: boolean 
   };
 
   // --- Recycle Bin Recovery Actions ---
-  const handleRestoreItem = async (item: DeletedItem) => {
+  const handleRestoreItem = async (item: RecycleBinItem) => {
     try {
-      await RecycleBinService.restoreItem(item.id);
+      await RecycleBinService.restoreItem(item);
       Alert.alert("Restored", `Successfully restored "${item.label}"`);
       loadRecycleBinData();
     } catch (e: any) {
@@ -401,7 +401,7 @@ export default function ProfileScreen({ isActive = true }: { isActive?: boolean 
     }
   };
 
-  const handlePermanentDelete = async (item: DeletedItem) => {
+  const handlePermanentDelete = async (item: RecycleBinItem) => {
     const confirmDelete =
       Platform.OS === "web"
         ? window.confirm(`Delete "${item.label}" permanently from the bin?`)
@@ -425,7 +425,7 @@ export default function ProfileScreen({ isActive = true }: { isActive?: boolean 
           });
 
     if (confirmDelete) {
-      await RecycleBinService.deletePermanently(item.id);
+      await RecycleBinService.permanentlyDeleteItem(item.id);
       loadRecycleBinData();
     }
   };
@@ -472,11 +472,10 @@ export default function ProfileScreen({ isActive = true }: { isActive?: boolean 
     </View>
   );
 
-  // --- Search Filter for Recycle Bin ---
   const filteredRecycleItems = recycleItems.filter((item) => {
     return (
       item.label.toLowerCase().includes(recycleSearch.toLowerCase()) ||
-      item.table.toLowerCase().includes(recycleSearch.toLowerCase())
+      item.type.toLowerCase().includes(recycleSearch.toLowerCase())
     );
   });
 
@@ -1047,7 +1046,8 @@ export default function ProfileScreen({ isActive = true }: { isActive?: boolean 
                 />
               ) : filteredRecycleItems.length > 0 ? (
                 filteredRecycleItems.map((item) => {
-                  const expDate = new Date(item.expiryAt);
+                  const delDate = new Date(item.deletedAt);
+                  const expDate = new Date(delDate.getTime() + 30 * 24 * 60 * 60 * 1000);
                   const daysLeft = Math.ceil(
                     (expDate.getTime() - Date.now()) / (1000 * 3600 * 24),
                   );
@@ -1066,7 +1066,7 @@ export default function ProfileScreen({ isActive = true }: { isActive?: boolean 
                             {item.label}
                           </Text>
                           <Text style={styles.recycleItemTableBadge}>
-                            {item.table
+                            {item.type
                               .replace("_slots", "")
                               .replace("_records", "")}
                           </Text>

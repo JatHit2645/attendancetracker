@@ -167,6 +167,9 @@ export default function SubjectsScreen({ isActive = true }: { isActive?: boolean
             target_threshold: data.threshold,
             teachers: data.teachers || [],
           });
+          if (data.renamedTeachers && data.renamedTeachers.length > 0) {
+            await DatabaseService.renameTeachersInRecords(selectedSubject.id, data.renamedTeachers);
+          }
         } else {
           await DatabaseService.createSubject({
             semester_id: activeSemesterId,

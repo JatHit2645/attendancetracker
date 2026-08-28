@@ -1,4 +1,5 @@
-import { secureStore } from '../lib/secureStore';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { supabase } from '../lib/supabase';
 
 export interface LogEntry {
   id: string;
@@ -9,32 +10,29 @@ export interface LogEntry {
   details?: string;
 }
 
-const STORAGE_KEY = 'attendance_tracker_logbook_v1';
+const getStorageKey = async () => {
+  const { data } = await supabase.auth.getSession();
+  const uid = data.session?.user?.id || 'anon';
+  return `@logbook_v1_${uid}`;
+};
 
 export const LogbookService = {
   async fetchLogs(): Promise<LogEntry[]> {
     try {
-      const data = await secureStore.getItem(STORAGE_KEY);
+      const data = await AsyncStorage.getItem(await getStorageKey());
       if (!data) return [];
       const parsed = JSON.parse(data) as LogEntry[];
-      // Sort newest first
-      return parsed.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+      return parsed.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
     } catch (e) {
-      console.warn('Failed to fetch logbook', e);
       return [];
     }
   },
 
-  async addLog(
-    actionType: LogEntry['actionType'],
-    category: LogEntry['category'],
-    description: string,
-    details?: string
-  ): Promise<void> {
+  async addLog(actionType: LogEntry['actionType'], category: LogEntry['category'], description: string, details?: string): Promise<void> {
     try {
       const logs = await this.fetchLogs();
-      const newEntry: LogEntry = {
-        id: Math.random().toString(36).substring(2, 15) + Date.now().toString(36),
+      const newLog: LogEntry = {
+        id: Math.random().toString(36).substring(7),
         timestamp: new Date().toISOString(),
         actionType,
         category,
@@ -42,21 +40,19 @@ export const LogbookService = {
         details,
       };
       
-      logs.unshift(newEntry);
+      logs.unshift(newLog);
       
-      // Limit to 500 logs to prevent storage bloat
-      const trimmed = logs.slice(0, 500);
-      await secureStore.setItem(STORAGE_KEY, JSON.stringify(trimmed));
+      if (logs.length > 500) {
+        logs.pop();
+      }
+      
+      await AsyncStorage.setItem(await getStorageKey(), JSON.stringify(logs));
     } catch (e) {
-      console.warn('Failed to add log to logbook', e);
+      console.error('Failed to add log', e);
     }
   },
 
   async clearLogs(): Promise<void> {
-    try {
-      await secureStore.deleteItem(STORAGE_KEY);
-    } catch (e) {
-      console.warn('Failed to clear logbook', e);
-    }
+    await AsyncStorage.removeItem(await getStorageKey());
   }
 };

@@ -46,7 +46,7 @@ export class SecurityService {
       if (result.success) {
         return { success: true };
       } else {
-        return { success: false, error: (result as any).error };
+        return { success: false, error: (result as any).error || 'Authentication failed' };
       }
     } catch (e: any) {
       return { success: false, error: e.message };

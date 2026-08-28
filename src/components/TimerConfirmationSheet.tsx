@@ -34,7 +34,11 @@ interface TimerConfirmationSheetProps {
   timer: TimerState | null;
   records: any[];
   subject?: any; // Add subject prop to fetch default teachers
-  onConfirm: (start: Date, end: Date, classType: string, teacherName: string, rating: number | null) => Promise<void> | void;
+  initialData?: { classType?: string; teacher?: string; rating?: number } | null;
+  mockEndTimeIso?: string;
+  allSubjects?: any[];
+  isProxy?: boolean;
+  onConfirm: (start: Date, end: Date, classType: string, teacherName: string, rating: number | null, proxySubjectId?: string) => Promise<void> | void;
   onDiscard: () => void;
   onCancel: () => void;
 }
@@ -100,7 +104,11 @@ export default function TimerConfirmationSheet({
   onConfirm,
   onDiscard,
   onCancel,
+allSubjects = [],
+  isProxy,
+mockEndTimeIso,
 }: TimerConfirmationSheetProps) {
+  const [proxySubjectId, setProxySubjectId] = React.useState<string>('');
   const [startTimeText, setStartTimeText] = useState('');
   const [endTimeText, setEndTimeText] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -170,7 +178,7 @@ export default function TimerConfirmationSheet({
   useEffect(() => {
     if (visible && timer) {
       setStartTimeText(formatISTTime(new Date(timer.startTimeIso)));
-      setEndTimeText(formatISTTime(new Date()));
+      setEndTimeText(mockEndTimeIso ? formatISTTime(new Date(mockEndTimeIso)) : formatISTTime(new Date()));
       setIsSubmitting(false);
 
       if (subject && subject.teachers && subject.teachers.length > 0) {
@@ -183,7 +191,7 @@ export default function TimerConfirmationSheet({
 
   const baseDate = new Date(timer.startTimeIso);
   const parsedStart = parseTimeText(startTimeText, baseDate);
-  const parsedEnd = parseTimeText(endTimeText, new Date());
+  const parsedEnd = parseTimeText(endTimeText, baseDate);
 
   let currentError: string | null = null;
   if (!parsedStart) {
@@ -200,8 +208,8 @@ export default function TimerConfirmationSheet({
       if (r.date !== todayStr) return false;
       if (!r.ist_start_time || !r.ist_end_time) return false;
       
-      const extStart = parseTimeText(r.ist_start_time, new Date());
-      const extEnd = parseTimeText(r.ist_end_time, new Date());
+      const extStart = parseTimeText(r.ist_start_time, baseDate);
+      const extEnd = parseTimeText(r.ist_end_time, baseDate);
       if (!extStart || !extEnd) return false;
       
       return parsedStart.getTime() < extEnd.getTime() && parsedEnd.getTime() > extStart.getTime();
@@ -322,7 +330,26 @@ export default function TimerConfirmationSheet({
 
                 <View style={styles.form}>
                   <View style={styles.formGroup}>
-                    <Text style={styles.label}>CLASS TYPE</Text>
+                    {isProxy && (
+  <View style={{ marginBottom: 16 }}>
+    <Text style={styles.label}>PROXY SUBJECT</Text>
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexDirection: 'row', marginTop: 8 }}>
+      {allSubjects.map(s => (
+        <TouchableOpacity
+          key={s.id}
+          onPress={() => {
+            setProxySubjectId(s.id);
+            if (s.teachers && s.teachers.length > 0) setTeacherName(s.teachers[0]);
+          }}
+          style={[{ paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.05)', marginRight: 8, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' }, proxySubjectId === s.id && { backgroundColor: '#3b82f6', borderColor: '#3b82f6' }]}
+        >
+          <Text style={{ color: proxySubjectId === s.id ? '#fff' : '#aaa', fontSize: 13, fontWeight: '600' }}>{s.short_name}</Text>
+        </TouchableOpacity>
+      ))}
+    </ScrollView>
+  </View>
+)}
+<Text style={styles.label}>CLASS TYPE</Text>
                     <View style={styles.segmentedControl}>
                       {(['theory', 'lab', 'tutorial'] as const).map(type => (
                         <TouchableOpacity

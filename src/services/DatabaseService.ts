@@ -1,5 +1,7 @@
 import { supabase } from '../lib/supabase';
 import { Database } from '../lib/database.types';
+import { SyncService } from './SyncService';
+import { TimerService } from './TimerService';
 import { LogbookService } from './LogbookService';
 import { RecycleBinService } from './RecycleBinService';
 
@@ -44,12 +46,14 @@ export const DatabaseService = {
   },
 
   async initializeNewUser(): Promise<Semester> {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error("Not logged in");
+    
     const now = new Date();
     const end = new Date();
     end.setMonth(end.getMonth() + 6);
     
-    const { data, error } = await supabase.from('academic_semesters').insert([{ 
-      name: 'Semester 1', 
+    const { data, error } = await supabase.from('academic_semesters').insert([{ user_id: user.id, name: 'Semester 1', 
       start_date: now.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' }), 
       end_date: end.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' }), 
       is_active: true 
@@ -61,10 +65,13 @@ export const DatabaseService = {
   },
 
   async createSemester(name: string, startDate: string, endDate?: string): Promise<Semester> {
+    const { data: { session } } = await supabase.auth.getSession();
+    const userId = session?.user?.id;
+    if (!userId) throw new Error('Not authenticated');
     // Deactivate currently active semesters first to keep active state unique
     await supabase.from('academic_semesters').update({ is_active: false } as any).eq('is_active', true);
 
-    const { data, error } = await supabase.from('academic_semesters').insert([{ name, start_date: startDate, end_date: endDate, is_active: true }]).select().single();
+    const { data, error } = await supabase.from('academic_semesters').insert([{ user_id: userId, name, start_date: startDate, end_date: endDate, is_active: true }]).select().single();
     if (error) throw error;
     
     await LogbookService.addLog('create', 'semester', `Created Semester: ${name}`);
@@ -148,13 +155,32 @@ export const DatabaseService = {
   },
 
   async createSubject(subject: Omit<Database['public']['Tables']['subjects']['Insert'], 'id' | 'created_at'>): Promise<Subject> {
-    const { data, error } = await supabase.from('subjects').insert([subject]).select().single();
+    const { data: { session } } = await supabase.auth.getSession();
+    const userId = session?.user?.id;
+    if (!userId) throw new Error('Not authenticated');
+    const { data, error } = await supabase.from('subjects').insert([{ user_id: userId, ...subject }]).select().single();
     if (error) throw error;
     
     await LogbookService.addLog('create', 'subject', `Created subject: ${data.name} (${data.short_name})`);
     return data;
   },
   
+    async renameTeachersInRecords(subjectId: string, renames: { oldName: string, newName: string }[]) {
+    try {
+      for (const rename of renames) {
+        const { error } = await supabase
+          .from('attendance_records')
+          .update({ teacher_name: rename.newName })
+          .eq('subject_id', subjectId)
+          .eq('teacher_name', rename.oldName);
+        if (error) throw error;
+      }
+    } catch (e) {
+      console.error('Failed to rename teachers:', e);
+      throw e;
+    }
+  },
+
   async updateSubject(id: string, updates: Partial<Database['public']['Tables']['subjects']['Update']>): Promise<Subject> {
     const { data, error } = await supabase.from('subjects').update(updates).eq('id', id).select().single();
     if (error) throw error;
@@ -198,7 +224,10 @@ export const DatabaseService = {
   },
 
   async createTimetableVersion(version: Omit<Database['public']['Tables']['timetable_versions']['Insert'], 'id' | 'created_at'>, cloneFromVersionId?: string): Promise<Database['public']['Tables']['timetable_versions']['Row']> {
-    const { data, error } = await supabase.from('timetable_versions').insert([version]).select().single();
+    const { data: { session } } = await supabase.auth.getSession();
+    const userId = session?.user?.id;
+    if (!userId) throw new Error('Not authenticated');
+    const { data, error } = await supabase.from('timetable_versions').insert([{ user_id: userId, ...version }]).select().single();
     if (error) throw error;
     
     // If copying from an existing version, duplicate its slots
@@ -273,7 +302,10 @@ export const DatabaseService = {
   },
 
   async createTimetableSlot(slot: Omit<Database['public']['Tables']['timetable_slots']['Insert'], 'id' | 'created_at'>): Promise<TimetableSlot> {
-    const { data, error } = await supabase.from('timetable_slots').insert([slot]).select().single();
+    const { data: { session } } = await supabase.auth.getSession();
+    const userId = session?.user?.id;
+    if (!userId) throw new Error('Not authenticated');
+    const { data, error } = await supabase.from('timetable_slots').insert([{ user_id: userId, ...slot }]).select().single();
     if (error) throw error;
     
     const { data: subject } = await supabase.from('subjects').select('*').eq('id', data.subject_id).single();
@@ -320,7 +352,10 @@ export const DatabaseService = {
   },
 
   async createHoliday(holiday: Omit<Database['public']['Tables']['holidays']['Insert'], 'id' | 'created_at'>): Promise<Holiday> {
-    const { data, error } = await supabase.from('holidays').insert([holiday]).select().single();
+    const { data: { session } } = await supabase.auth.getSession();
+    const userId = session?.user?.id;
+    if (!userId) throw new Error('Not authenticated');
+    const { data, error } = await supabase.from('holidays').insert([{ user_id: userId, ...holiday }]).select().single();
     if (error) throw error;
     
     await LogbookService.addLog('create', 'holiday', `Marked holiday: ${data.title} on ${data.date}`);
@@ -363,7 +398,10 @@ export const DatabaseService = {
   },
 
   async logAttendanceSession(record: Omit<Database['public']['Tables']['attendance_records']['Insert'], 'id' | 'created_at'>): Promise<AttendanceRecord> {
-    const { data, error } = await supabase.from('attendance_records').insert([record]).select().single();
+    const { data: { session } } = await supabase.auth.getSession();
+    const userId = session?.user?.id;
+    if (!userId) throw new Error('Not authenticated');
+    const { data, error } = await supabase.from('attendance_records').insert([{ user_id: userId, ...record }]).select().single();
     if (error) throw error;
     
     const { data: subject } = await supabase.from('subjects').select('*').eq('id', data.subject_id).single();
@@ -404,22 +442,29 @@ export const DatabaseService = {
 
   // --- Real Account Deletion Sequence ---
   async deleteAccountData(): Promise<void> {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) throw new Error('Not authenticated');
+    const { data: { user }, error } = await supabase.auth.getUser();
+    if (error || !user) throw new Error('Not authenticated');
 
-    // 1. Delete rows sequentially to handle cascades smoothly and wipe database clean
-    await supabase.from('attendance_records').delete().eq('user_id', user.id);
-    await supabase.from('timetable_slots').delete().eq('user_id', user.id);
-    await supabase.from('holidays').delete().eq('user_id', user.id);
-    await supabase.from('subjects').delete().eq('user_id', user.id);
-    await supabase.from('academic_semesters').delete().eq('user_id', user.id);
-    await supabase.from('profiles').delete().eq('id', user.id);
-    
-    // Clean local services
-    await LogbookService.clearLogs();
-    
     try {
+      // 1. Delete rows sequentially to handle cascades smoothly and wipe database clean
+      await supabase.from('attendance_records').delete().eq('user_id', user.id);
+      await supabase.from('timetable_slots').delete().eq('user_id', user.id);
+      await supabase.from('holidays').delete().eq('user_id', user.id);
+      await supabase.from('subjects').delete().eq('user_id', user.id);
+      await supabase.from('timetable_versions').delete().eq('user_id', user.id);
+      await supabase.from('academic_semesters').delete().eq('user_id', user.id);
+      await supabase.from('profiles').delete().eq('id', user.id);
+      
+      // Clean local services
+      await LogbookService.clearLogs();
+      await RecycleBinService.emptyBin();
+      await SyncService.clearQueue();
+      await TimerService.clearTimer();
+      
       await supabase.rpc('delete_user');
-    } catch (e) {}
+    } catch (e) {
+      console.error('Failed to delete account data:', e);
+      throw e;
+    }
   }
 };

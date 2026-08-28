@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Modal, ScrollView, TextInput, Platform } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Modal, ScrollView, TextInput, Platform, KeyboardAvoidingView } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
 import { canvas, glass, border, text, accent, palette } from '../theme/colors';
@@ -95,8 +95,8 @@ export default function TimetableManager({ visible, semesterId, onClose, onVersi
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <View style={styles.overlay}>
-        <BlurView intensity={30} tint="dark" style={StyleSheet.absoluteFill} />
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.overlay}>
+        <BlurView intensity={30} tint="dark" style={StyleSheet.absoluteFill as any} />
         <View style={styles.sheet}>
           <View style={styles.header}>
             <Text style={styles.title}>Timetable Versions</Text>
@@ -196,8 +196,8 @@ export default function TimetableManager({ visible, semesterId, onClose, onVersi
 
           {isEditing && (
             <Modal transparent visible={isEditing} onRequestClose={() => setIsEditing(false)}>
-              <View style={styles.overlay}>
-                <BlurView intensity={30} tint="dark" style={StyleSheet.absoluteFill} />
+              <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.overlay}>
+                <BlurView intensity={30} tint="dark" style={StyleSheet.absoluteFill as any} />
                 <View style={styles.sheet}>
                   <Text style={styles.title}>Edit Version</Text>
                   <Text style={styles.label}>VERSION NAME</Text>
@@ -218,11 +218,11 @@ export default function TimetableManager({ visible, semesterId, onClose, onVersi
                     </TouchableOpacity>
                   </View>
                 </View>
-              </View>
+              </KeyboardAvoidingView>
             </Modal>
           )}
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
