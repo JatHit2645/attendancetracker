@@ -67,24 +67,45 @@ export default function SubjectBottomSheet({ visible, initialData, onClose, onSa
   const handleSave = () => {
     if (!name.trim() || !shortName.trim()) return;
     let parsedThreshold = parseInt(threshold, 10);
-    if (isNaN(parsedThreshold)) parsedThreshold = 75;
-    parsedThreshold = Math.min(100, Math.max(1, parsedThreshold));
+    if (isNaN(parsedThreshold) || parsedThreshold < 1 || parsedThreshold > 100) {
+      import('react-native').then(({ Alert }) => {
+        Alert.alert("Validation Error", "Threshold must be between 1 and 100.");
+      });
+      return;
+    }
 
-    onSave({
-      name: name.trim(),
-      shortName: shortName.trim().toUpperCase(),
-      threshold: parsedThreshold,
-      teachers: teachers,
-    } as any);
-    setName('');
-    setShortName('');
-    setThreshold('75');
-    setTeachers([]);
-    setTeacherInput('');
-    setTeacherShortName('');
-    setEditingOldTeacher(null);
-    setRenamedTeachers([]);
-    onClose();
+    const saveChanges = () => {
+      onSave({
+        name: name.trim(),
+        shortName: shortName.trim().toUpperCase(),
+        threshold: parsedThreshold,
+        teachers: teachers,
+      } as any);
+      setName('');
+      setShortName('');
+      setThreshold('75');
+      setTeachers([]);
+      setTeacherInput('');
+      setTeacherShortName('');
+      setEditingOldTeacher(null);
+      setRenamedTeachers([]);
+      onClose();
+    };
+
+    if (initialData) {
+      import('react-native').then(({ Alert }) => {
+        Alert.alert(
+          "Confirm Edit",
+          "Are you sure you want to save these changes to the subject?",
+          [
+            { text: "Cancel", style: "cancel" },
+            { text: "Save", onPress: saveChanges }
+          ]
+        );
+      });
+    } else {
+      saveChanges();
+    }
   };
 
   const handleAddTeacher = () => {

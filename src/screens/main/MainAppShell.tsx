@@ -116,8 +116,8 @@ export default function MainAppShell() {
             <ProfileScreen isActive={activeTab === 'profile'} />
           </View>
         )}
-        {mountedTabs.has('campus_map' as any) && (
-          <View style={[styles.screenWrapper, activeTab !== 'campus_map' as any && styles.hidden]}>
+        {mountedTabs.has('campus_map') && (
+          <View style={[styles.screenWrapper, activeTab !== 'campus_map' && styles.hidden]}>
             <CampusMapScreen />
           </View>
         )}

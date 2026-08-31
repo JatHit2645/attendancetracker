@@ -10,7 +10,7 @@
  * - Export functions for CSV and PDF on mobile.
  */
 
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import {
   View,
   Text,
@@ -44,12 +44,14 @@ import { DatabaseService } from "../../services/DatabaseService";
 import { Database } from "../../lib/database.types";
 import { supabase } from "../../lib/supabase";
 import HolidayManagerSheet from "../../components/HolidayManagerSheet";
+import AttendanceSimulatorSheet, { AttendanceSimulatorSheetRef } from "../../components/AttendanceSimulatorSheet";
+import { BottomSheetModal } from "@gorhom/bottom-sheet";
 
 type SubjectRow = Database["public"]["Tables"]["subjects"]["Row"];
 type RecordRow = Database["public"]["Tables"]["attendance_records"]["Row"];
 
 const calculatePercentage = (attended: number, conducted: number) => {
-  if (conducted === 0) return 0;
+  if (conducted === 0) return -1;
   return Math.round((attended / conducted) * 100);
 };
 
@@ -96,7 +98,7 @@ const getCalendarMatrix = (
     const dateStr = `${year}-${(monthIndex + 1).toString().padStart(2, "0")}-${d.toString().padStart(2, "0")}`;
     const dayRecords = allRecords.filter((r) => r.date === dateStr);
 
-    let ratio = -1; // Holiday/Weekend (Off)
+    let ratio = dayOfWeek === 0 ? -4 : -1; // Holiday/Weekend
     const isHoliday = holidays.some(
       (h) => h.date && h.date.startsWith(dateStr),
     );
@@ -111,7 +113,10 @@ const getCalendarMatrix = (
       ratio = presentCount / activeRecords.length;
     } else if (!isWeekend) {
       ratio = -1;
-    }
+      } else if (dayOfWeek === 0) {
+        ratio = -4;
+      }
+
 
     matrix.push({ day: d, dateStr, ratio });
   }
@@ -147,6 +152,8 @@ export default function AnalyticsScreen({ isActive = true }: { isActive?: boolea
   const [records, setRecords] = useState<RecordRow[]>([]);
   const [holidays, setHolidays] = useState<any[]>([]);
     const [holidaySheetVisible, setHolidaySheetVisible] = useState(false);
+  const [selectedSimSubject, setSelectedSimSubject] = useState<any>(null);
+  const simulatorRef = useRef<AttendanceSimulatorSheetRef>(null);
 
   const loadData = async () => {
     try {
@@ -322,6 +329,7 @@ export default function AnalyticsScreen({ isActive = true }: { isActive?: boolea
     if (ratio === -3) return accent.primary; // Holiday (Blue)
     if (ratio === -2) return "transparent"; // Padding
     if (ratio === -1) return glass.medium; // Off / Weekend
+    if (ratio === -4) return "#eab308"; // Golden Sunday
     if (ratio === 1) return attendanceColors.present.base; // 100% (Green)
     if (ratio >= 0.75) return heat.limeHeat; // 75% (Lime)
     if (ratio >= 0.5) return heat.yellowHeat; // 50% (Yellow)
@@ -337,7 +345,7 @@ export default function AnalyticsScreen({ isActive = true }: { isActive?: boolea
     let csvContent =
       "Subject,Short Name,Attended,Conducted,Percentage,Threshold,Period\n";
     periodSubjects.forEach((s) => {
-      csvContent += `"${s.name}","${s.short_name}",${s.totalAttended},${s.totalConducted},${s.percentage}%,${s.threshold}%,"${selectedPeriod.label}"\n`;
+      csvContent += `"${s.name}","${s.short_name}",${s.totalAttended},${s.totalConducted},${s.percentage < 0 ? "-" : s.percentage + "%"},${s.threshold}%,"${selectedPeriod.label}"\n`;
     });
 
     if (Platform.OS === "web") {
@@ -426,7 +434,7 @@ export default function AnalyticsScreen({ isActive = true }: { isActive?: boolea
               <td>${s.name} (${s.short_name})</td>
               <td>${s.totalConducted}</td>
               <td>${s.totalAttended}</td>
-              <td class="${colorClass}">${s.percentage}%</td>
+              <td class="${colorClass}">${s.percentage < 0 ? "-" : s.percentage + "%"}</td>
               <td>${s.threshold}%</td>
             </tr>
           `;
@@ -659,6 +667,15 @@ export default function AnalyticsScreen({ isActive = true }: { isActive?: boolea
                     />
                     <Text style={styles.legendText}>Off</Text>
                   </View>
+                  <View style={styles.legendItem}>
+                    <View
+                      style={[
+                        styles.legendDot,
+                        { backgroundColor: "#eab308" },
+                      ]}
+                    />
+                    <Text style={styles.legendText}>Sunday</Text>
+                  </View>
                 </View>
               </View>
             </View>
@@ -686,11 +703,15 @@ export default function AnalyticsScreen({ isActive = true }: { isActive?: boolea
             <View style={styles.detailRow}>
               <Ionicons
                 name={
-                  selectedDay.ratio === -1
-                    ? "sunny-outline"
-                    : selectedDay.ratio === 1
-                      ? "checkmark-circle-outline"
-                      : "warning-outline"
+                  selectedDay.ratio === -3
+                    ? "gift-outline"
+                    : selectedDay.ratio === -4
+                      ? "sunny"
+                      : selectedDay.ratio === -1
+                        ? "moon-outline"
+                        : selectedDay.ratio === 1
+                          ? "checkmark-circle-outline"
+                          : "warning-outline"
                 }
                 size={20}
                 color={
@@ -700,12 +721,16 @@ export default function AnalyticsScreen({ isActive = true }: { isActive?: boolea
                 }
               />
               <Text style={styles.detailStatusText}>
-                {selectedDay.ratio === -1
-                  ? "Official Holiday / Sunday"
-                  : `Attendance Ratio: ${Math.round(selectedDay.ratio * 100)}%`}
+                {selectedDay.ratio === -3
+                  ? "Official Holiday"
+                  : selectedDay.ratio === -4
+                    ? "Sunday"
+                    : selectedDay.ratio === -1
+                      ? "Weekend / Off"
+                      : `Attendance Ratio: ${Math.round(selectedDay.ratio * 100)}%`}
               </Text>
             </View>
-            {selectedDay.ratio !== -1 && (
+            {selectedDay.ratio >= 0 && (
               <View style={styles.detailStats}>
                 <Text style={styles.detailSubtext}>Logged Lectures:</Text>
                 <Text style={styles.detailLectureLog}>
@@ -745,8 +770,8 @@ export default function AnalyticsScreen({ isActive = true }: { isActive?: boolea
               const attended = teacherRecords.filter(r => r.status === 'present').length;
               const ratedRecords = teacherRecords.filter(r => typeof r.rating === 'number');
               const avgRating = ratedRecords.length > 0 
-                ? (ratedRecords.reduce((sum, r) => sum + (r.rating || 0), 0) / ratedRecords.length).toFixed(1)
-                : 'N/A';
+                  ? (ratedRecords.reduce((sum, r) => sum + (r.rating || 0), 0) / ratedRecords.length).toFixed(1)
+                  : 'N/A';
               const attPerc = calculatePercentage(attended, conducted);
 
               return (
@@ -754,7 +779,7 @@ export default function AnalyticsScreen({ isActive = true }: { isActive?: boolea
                   <Text style={styles.facultyName} numberOfLines={1}>{displayName}</Text>
                   <View style={styles.facultyStatsRow}>
                     <View style={styles.facultyStatBox}>
-                      <Text style={styles.facultyStatValue}>⭐ {avgRating}</Text>
+                      <Text style={styles.facultyStatValue}>{avgRating !== "N/A" ? `${avgRating}/10` : "N/A"}</Text>
                       <Text style={styles.facultyStatLabel}>Avg Rating</Text>
                     </View>
                     <View style={styles.facultyStatBox}>
@@ -784,22 +809,33 @@ export default function AnalyticsScreen({ isActive = true }: { isActive?: boolea
               return (
                 <View key={subject.id} style={styles.matrixItem}>
                   <View style={styles.matrixHeader}>
-                    <Text style={styles.matrixSubjectName} numberOfLines={1}>
-                      {subject.name}
-                    </Text>
+                    <View style={{ flex: 1 }}>
+                        <Text style={[styles.matrixSubjectName, { flexShrink: 1 }]} numberOfLines={1}>
+                          {subject.name}
+                        </Text>
+                        <TouchableOpacity
+                          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                          style={[styles.simulateBtn, { alignSelf: 'flex-start', marginTop: 4 }]}
+                          onPress={() => {
+                            setSelectedSimSubject(subject);
+                            setTimeout(() => simulatorRef.current?.present(), 0);
+                          }}
+                        >
+                          <Ionicons name="calculator" size={10} color="#fff" />
+                          <Text style={styles.simulateBtnText}>Simulate</Text>
+                        </TouchableOpacity>
+                      </View>
                     <Text
                       style={[styles.matrixPercentage, { color: barColor }]}
-                    >
-                      {subject.percentage}%
-                    </Text>
+                    >{subject.percentage < 0 ? "-" : `${subject.percentage}%`}</Text>
                   </View>
-                  <View style={styles.progressContainer}>
+                  <View style={styles.progressContainer} pointerEvents="none">
                     <View style={styles.progressTrack}>
                       <View
                         style={[
                           styles.progressFill,
                           {
-                            width: `${subject.percentage}%`,
+                            width: `${Math.max(0, subject.percentage)}%`,
                             backgroundColor: barColor,
                           },
                         ]}
@@ -807,15 +843,15 @@ export default function AnalyticsScreen({ isActive = true }: { isActive?: boolea
 
                       {/* 75% Compliance line */}
                       <View style={[styles.markerLine, { left: "75%" }]}>
-                        <Text style={[styles.markerLabel, { bottom: -18 }]}>
-                          75% Warn
+                        <Text style={[styles.markerLabel, { bottom: -14 }]}>
+                          75%
                         </Text>
                       </View>
 
                       {/* 85% Compliance line */}
                       <View style={[styles.markerLine, { left: "85%" }]}>
                         <Text style={[styles.markerLabel, { bottom: -32 }]}>
-                          85% Safe
+                          85%
                         </Text>
                       </View>
                     </View>
@@ -948,6 +984,10 @@ export default function AnalyticsScreen({ isActive = true }: { isActive?: boolea
         semesterId={undefined}
         onClose={() => setHolidaySheetVisible(false)}
         onRefresh={loadData}
+      />
+      <AttendanceSimulatorSheet
+        ref={simulatorRef}
+        subject={selectedSimSubject}
       />
     </View>
   );
@@ -1181,6 +1221,21 @@ const styles = StyleSheet.create({
     fontSize: fontSize.sm,
     color: textColors.primary,
     flex: 1,
+  },
+  simulateBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: "#3b82f6",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  simulateBtnText: {
+    fontFamily: fontFamily.bold,
+    fontSize: 10,
+    color: "#ffffff",
+    textTransform: "uppercase",
   },
   matrixPercentage: {
     fontFamily: fontFamily.bold,

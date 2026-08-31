@@ -20,7 +20,7 @@ import {
 import { fontFamily, textStyle } from '../theme/typography';
 import { spacing, radius, layout } from '../theme/spacing';
 
-export type TabName = 'dashboard' | 'subjects' | 'timetable' | 'analytics' | 'profile';
+export type TabName = 'dashboard' | 'subjects' | 'timetable' | 'analytics' | 'profile' | 'campus_map';
 
 interface BottomTabBarProps {
   activeTab: TabName;

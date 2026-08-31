@@ -83,7 +83,7 @@ export default React.memo(function SubjectCard({
     subject.totalAttended,
     subject.totalConducted,
   );
-  const status = getAttendanceStatus(percentage, subject.threshold);
+  const status = percentage < 0 ? "safe" : getAttendanceStatus(percentage, subject.threshold);
   const statusLabel = getStatusLabel(status);
   const statusColor = getStatusColor(status);
   const subjectColor = subject.color || "#6366F1";
@@ -114,8 +114,6 @@ export default React.memo(function SubjectCard({
   return (
     <View
       style={styles.cardContainer}
-      accessible={true}
-      accessibilityLabel={`${subject.name}. ${percentage}%. ${statusLabel}. ${helperText}`}
     >
       <TouchableOpacity hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}        activeOpacity={0.7}
         onPress={onPress}
@@ -176,7 +174,7 @@ export default React.memo(function SubjectCard({
             animationDuration={1000}
             color={subjectColor}
           >
-            <Text style={styles.gaugePercentage}>{percentage}%</Text>
+            <Text style={styles.gaugePercentage}>{percentage < 0 ? "-" : `${percentage}%`}</Text>
           </AttendanceGauge>
         </View>
       </TouchableOpacity>

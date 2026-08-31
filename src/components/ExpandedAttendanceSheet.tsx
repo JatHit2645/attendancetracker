@@ -86,7 +86,7 @@ const AnimatedSubjectCard = ({ stat, index }: { stat: any, index: number }) => {
               strokeWidth={6}
             >
               <Text style={[styles.gaugePercentageText, { color: isSafe ? '#10B981' : '#EF4444' }]}>
-                {stat.percentage}%
+                {stat.percentage < 0 ? "-" : `${stat.percentage}%`}
               </Text>
             </AttendanceGauge>
           </View>
@@ -127,7 +127,7 @@ export default function ExpandedAttendanceSheet({
   }, [records, filterType, selectedTeacher]);
 
   const calculatePercentage = (attended: number, conducted: number) => {
-    return conducted === 0 ? 100 : Math.round((attended / conducted) * 100);
+    return conducted === 0 ? -1 : Math.round((attended / conducted) * 100);
   };
 
   const subjectStats = useMemo(() => {
@@ -170,7 +170,7 @@ export default function ExpandedAttendanceSheet({
           <View style={styles.header}>
             <View>
               <Text style={styles.title}>Detailed Attendance</Text>
-              <Text style={styles.subtitle}>Filtered Overall: <Text style={{ color: overallPercentage >= 75 ? '#10B981' : '#EF4444', fontFamily: fontFamily.bold }}>{overallPercentage}%</Text></Text>
+              <Text style={styles.subtitle}>Filtered Overall: <Text style={{ color: overallPercentage >= 75 ? '#10B981' : '#EF4444', fontFamily: fontFamily.bold }}>{overallPercentage < 0 ? "-" : `${overallPercentage}%`}</Text></Text>
             </View>
             <TouchableOpacity onPress={onClose} style={styles.closeBtn} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
               <Ionicons name="close" size={20} color={textColors.primary} />

@@ -340,7 +340,8 @@ export default function TimetableScreen({ isActive = true }: { isActive?: boolea
 
   const handleDeleteClass = useCallback(async () => {
     if (!selectedSlot) return;
-  }, [selectedSlot, handleCloseSheet, loadData]);
+    handleDeleteSlot(selectedSlot.id);
+  }, [selectedSlot]);
 
   return (
     <View style={styles.screen}>

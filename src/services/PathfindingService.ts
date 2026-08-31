@@ -1,140 +1,96 @@
-import { supabase } from '../lib/supabase';
+import { MAP_NODES, MAP_EDGES, MapNode } from '../data/MapGraph';
 
-export type CampusNode = {
-  id: string;
-  floor_id: string;
-  node_name: string;
-  node_type: string;
-  x_coord: number;
-  y_coord: number;
-};
+interface RouteResult {
+  path: MapNode[];
+  totalDistancePixels: number;
+  estimatedMinutes: number;
+}
 
-export type CampusEdge = {
-  id: string;
-  from_node_id: string;
-  to_node_id: string;
-  weight: number;
-};
+// 1 pixel roughly equals 0.5 meters on our campus map scale
+const PIXEL_TO_METER = 0.5;
+// Average walking speed = 1.4 m/s (approx 84 m/min)
+const METERS_PER_MINUTE = 80;
 
-export class PathfindingService {
-  private nodes: Map<string, CampusNode> = new Map();
-  private adjacencyList: Map<string, { to: string; weight: number }[]> = new Map();
+export const PathfindingService = {
+  findShortestPath(startId: string, endId: string): RouteResult | null {
+    if (startId === endId) return { path: [], totalDistancePixels: 0, estimatedMinutes: 0 };
 
-  async loadGraph() {
-    const { data: nodesData, error: nodesError } = await supabase
-      .from('campus_nodes')
-      .select('*');
+    const nodes = new Map<string, MapNode>();
+    MAP_NODES.forEach(n => nodes.set(n.id, n));
 
-    const { data: edgesData, error: edgesError } = await supabase
-      .from('campus_edges')
-      .select('*');
+    const adjacencyList = new Map<string, { to: string; cost: number }[]>();
+    MAP_NODES.forEach(n => adjacencyList.set(n.id, []));
 
-    if (nodesError || edgesError) {
-      console.error('Error loading graph:', nodesError, edgesError);
-      return false;
-    }
+    // Build bi-directional graph
+    MAP_EDGES.forEach(edge => {
+      adjacencyList.get(edge.from)?.push({ to: edge.to, cost: edge.distance });
+      adjacencyList.get(edge.to)?.push({ to: edge.from, cost: edge.distance });
+    });
 
-    this.nodes.clear();
-    this.adjacencyList.clear();
+    // Dijkstra's Algorithm
+    const distances = new Map<string, number>();
+    const previous = new Map<string, string | null>();
+    const unvisited = new Set<string>();
 
-    if (nodesData) {
-      for (const node of nodesData) {
-        this.nodes.set(node.id, node);
-        this.adjacencyList.set(node.id, []);
-      }
-    }
+    MAP_NODES.forEach(n => {
+      distances.set(n.id, Infinity);
+      previous.set(n.id, null);
+      unvisited.add(n.id);
+    });
 
-    if (edgesData) {
-      for (const edge of edgesData) {
-        if (!this.adjacencyList.has(edge.from_node_id)) {
-          this.adjacencyList.set(edge.from_node_id, []);
-        }
-        if (!this.adjacencyList.has(edge.to_node_id)) {
-          this.adjacencyList.set(edge.to_node_id, []);
-        }
-        const weight = edge.weight_meters;
-        this.adjacencyList.get(edge.from_node_id)!.push({ to: edge.to_node_id, weight });
-        // Assuming undirected graph for pathfinding unless stated otherwise
-        this.adjacencyList.get(edge.to_node_id)!.push({ to: edge.from_node_id, weight });
-      }
-    }
-    return true;
-  }
-
-  getNodes() {
-    return Array.from(this.nodes.values());
-  }
-
-  getEdges() {
-    const edges: { from: string; to: string; weight: number }[] = [];
-    for (const [from, neighbors] of this.adjacencyList.entries()) {
-      for (const neighbor of neighbors) {
-        edges.push({ from, to: neighbor.to, weight: neighbor.weight });
-      }
-    }
-    return edges;
-  }
-
-  findShortestPath(startNodeId: string, endNodeId: string): CampusNode[] | null {
-    if (!this.adjacencyList.has(startNodeId) || !this.adjacencyList.has(endNodeId)) {
-      return null;
-    }
-
-    const distances: Map<string, number> = new Map();
-    const previous: Map<string, string | null> = new Map();
-    const unvisited: Set<string> = new Set();
-
-    for (const nodeId of this.adjacencyList.keys()) {
-      distances.set(nodeId, Infinity);
-      previous.set(nodeId, null);
-      unvisited.add(nodeId);
-    }
-    distances.set(startNodeId, 0);
+    distances.set(startId, 0);
 
     while (unvisited.size > 0) {
-      let closestNode: string | null = null;
+      // Find unvisited node with minimum distance
+      let currentId: string | null = null;
       let minDistance = Infinity;
-      
-      for (const nodeId of unvisited) {
-        const dist = distances.get(nodeId)!;
+
+      unvisited.forEach(id => {
+        const dist = distances.get(id)!;
         if (dist < minDistance) {
           minDistance = dist;
-          closestNode = nodeId;
+          currentId = id;
         }
-      }
+      });
 
-      if (closestNode === null || closestNode === endNodeId) {
-        break;
-      }
+      if (currentId === null || currentId === endId) break;
 
-      unvisited.delete(closestNode);
+      unvisited.delete(currentId);
+      const currentDist = distances.get(currentId)!;
 
-      const neighbors = this.adjacencyList.get(closestNode) || [];
+      const neighbors = adjacencyList.get(currentId) || [];
       for (const neighbor of neighbors) {
         if (!unvisited.has(neighbor.to)) continue;
 
-        const altDistance = distances.get(closestNode)! + neighbor.weight;
-        if (altDistance < distances.get(neighbor.to)!) {
-          distances.set(neighbor.to, altDistance);
-          previous.set(neighbor.to, closestNode);
+        const alt = currentDist + neighbor.cost;
+        if (alt < distances.get(neighbor.to)!) {
+          distances.set(neighbor.to, alt);
+          previous.set(neighbor.to, currentId);
         }
       }
     }
 
-    const path: CampusNode[] = [];
-    let current: string | null = endNodeId;
+    // Backtrack path
+    if (distances.get(endId) === Infinity) return null; // No path found
 
-    if (distances.get(endNodeId) === Infinity) {
-      return null; // No path found
+    const pathIds: string[] = [];
+    let curr: string | null = endId;
+    while (curr !== null) {
+      pathIds.unshift(curr);
+      curr = previous.get(curr)!;
     }
 
-    while (current !== null) {
-      path.unshift(this.nodes.get(current)!);
-      current = previous.get(current)!;
-    }
+    const pathNodes = pathIds.map(id => nodes.get(id)!);
+    const totalDistancePixels = distances.get(endId)!;
+    
+    // Time estimation
+    const distanceMeters = totalDistancePixels * PIXEL_TO_METER;
+    const estimatedMinutes = Math.max(1, Math.ceil(distanceMeters / METERS_PER_MINUTE));
 
-    return path;
+    return {
+      path: pathNodes,
+      totalDistancePixels,
+      estimatedMinutes,
+    };
   }
-}
-
-export const pathfindingService = new PathfindingService();
+};

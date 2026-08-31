@@ -149,9 +149,17 @@ export default function HolidayManagerSheet({ visible, semesterId, onClose, onRe
 
       if (editingHoliday) {
         // Edit mode (single date updates)
-        await DatabaseService.updateHoliday(editingHoliday.id, {
-          title: title.trim(),
-          date: startDate.replace(/\//g, '-').trim()
+        await new Promise((resolve, reject) => {
+          Alert.alert("Confirm Edit", "Are you sure you want to save these changes to the holiday?", [
+            { text: "Cancel", style: "cancel", onPress: () => reject('cancelled') },
+            { text: "Save", onPress: async () => {
+                await DatabaseService.updateHoliday(editingHoliday.id, {
+                  title: title.trim(),
+                  date: startDate.replace(/\//g, '-').trim()
+                });
+                resolve(true);
+            }}
+          ]);
         });
       } else {
         // Add mode (allows date ranges)

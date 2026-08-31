@@ -31,6 +31,7 @@ import StopwatchTimerBanner from "../../components/StopwatchTimerBanner";
 import TimerConfirmationSheet from "../../components/TimerConfirmationSheet";
 import SemesterSwitchSheet from "../../components/SemesterSwitchSheet";
 import ExpandedAttendanceSheet from "../../components/ExpandedAttendanceSheet";
+import DatePickerSheet from "../../components/DatePickerSheet";
 import { TimerService, TimerState } from "../../services/TimerService";
 import {
   canvas,
@@ -54,7 +55,7 @@ type RecordRow = Database["public"]["Tables"]["attendance_records"]["Row"];
 type TimetableSlot = Database["public"]["Tables"]["timetable_slots"]["Row"];
 
 const calculatePercentage = (attended: number, conducted: number) => {
-  if (conducted === 0) return 0;
+  if (conducted === 0) return -1;
   return Math.round((attended / conducted) * 100);
 };
 
@@ -69,7 +70,7 @@ const lecturesCanMiss = (
   conducted: number,
   threshold: number,
 ) => {
-  if (conducted === 0) return 0;
+  if (conducted === 0) return -1;
   let currentPercentage = (attended / conducted) * 100;
   let canMiss = 0;
   let virtualConducted = conducted;
@@ -94,11 +95,18 @@ export default function DashboardScreen({ isActive = true }: { isActive?: boolea
   const [selectedDate, setSelectedDate] = useState(() => 
     new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" })
   );
+  const [showDatePicker, setShowDatePicker] = useState(false);
 
   const changeDate = (days: number) => {
     const [y, m, d] = selectedDate.split("-").map(Number);
     const newDate = new Date(y, m - 1, d);
     newDate.setDate(newDate.getDate() + days);
+    
+    // Respect semester start date as minimum
+    if (activeSemester?.start_date) {
+      const minDate = new Date(activeSemester.start_date);
+      if (newDate < minDate) return;
+    }
     
     const yyyy = newDate.getFullYear();
     const mm = String(newDate.getMonth() + 1).padStart(2, "0");
@@ -111,9 +119,10 @@ export default function DashboardScreen({ isActive = true }: { isActive?: boolea
   const [subjects, setSubjects] = useState<SubjectRow[]>([]);
   const [records, setRecords] = useState<RecordRow[]>([]);
   const [schedule, setSchedule] = useState<TimetableSlot[]>([]);
+  const [holidays, setHolidays] = useState<any[]>([]);
   const [markingIds, setMarkingIds] = useState<Record<string, boolean>>({});
   
-  const [pendingStatus, setPendingStatus] = useState<"present" | "absent" | null>(null);
+  const [pendingStatus, setPendingStatus] = useState<"present" | "absent" | "cancelled" | "proxy" | null>(null);
   const [pendingItem, setPendingItem] = useState<any>(null);
 
   const loadData = React.useCallback(async () => {
@@ -122,15 +131,17 @@ export default function DashboardScreen({ isActive = true }: { isActive?: boolea
       setActiveSemester(activeSem);
       if (!activeSem) return; // No active semester yet
 
-      const [fetchedSubjects, fetchedRecords, fetchedSchedule] =
+      const [fetchedSubjects, fetchedRecords, fetchedSchedule, fetchedHolidays] =
         await Promise.all([
           DatabaseService.fetchSubjects(activeSem.id),
           DatabaseService.fetchAttendanceRecords(activeSem.id),
           DatabaseService.fetchTimetable(activeSem.id, selectedDate),
+          DatabaseService.fetchHolidays(activeSem.id),
         ]);
       setSubjects(fetchedSubjects);
       setRecords(fetchedRecords);
       setSchedule(fetchedSchedule);
+      setHolidays(fetchedHolidays);
     } catch (error) {
       console.warn("Failed to load dashboard data from Supabase", error);
     }
@@ -225,8 +236,9 @@ export default function DashboardScreen({ isActive = true }: { isActive?: boolea
     end: Date,
     classType: 'theory' | 'lab' | 'tutorial',
     teacherName: string | null,
-    rating: number
-  ) => {
+      rating: number,
+      proxySubjectId?: string
+    ) => {
     // In a real app, check collision here with actual IST Date parsing
     // Mock collision logic: if end time is before start time (just basic validation)
     if (end.getTime() <= start.getTime()) {
@@ -241,10 +253,10 @@ export default function DashboardScreen({ isActive = true }: { isActive?: boolea
     // Log to Supabase
     if (activeTimer) {
       try {
-        const insertStatus = pendingStatus || "present";
+        const insertStatus = (pendingStatus === "proxy" ? "present" : pendingStatus) || "present";
         const insertDate = pendingItem ? selectedDate : new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
-        await DatabaseService.logAttendanceSession({
-          subject_id: activeTimer.subjectId,
+        const payload = {
+          subject_id: (pendingStatus === "proxy" && proxySubjectId) ? proxySubjectId : activeTimer.subjectId,
           date: insertDate,
           status: insertStatus,
           ist_start_time: start.toLocaleTimeString("en-US", {
@@ -262,7 +274,12 @@ export default function DashboardScreen({ isActive = true }: { isActive?: boolea
           teacher_name: teacherName,
           rating: rating > 0 ? rating : null,
           notes: pendingItem ? "Manual Entry" : "Recorded via Stopwatch Timer",
-        });
+        };
+        if (pendingItem?.recordId) {
+            await (supabase as any).from("attendance_records").update(payload).eq("id", pendingItem.recordId);
+        } else {
+            await DatabaseService.logAttendanceSession(payload);
+        }
         loadData(); // Refresh stats
       } catch (e) {
         console.error("Failed to log session", e);
@@ -290,82 +307,63 @@ export default function DashboardScreen({ isActive = true }: { isActive?: boolea
 
   const handleMarkAttendance = React.useCallback(async (
     item: any,
-    status: "present" | "absent" | "cancelled",
+    status: "present" | "absent" | "cancelled" | "proxy",
   ) => {
     if (markingIds[item.id]) return;
 
+    // Helper for direct status update/insert
+    const upsertStatus = async (targetStatus: string) => {
+      setMarkingIds((prev) => ({ ...prev, [item.id]: true }));
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) throw new Error("Not logged in");
+
+        const [sh, sm] = item.startTime.split(":").map(Number);
+        const [eh, em] = item.endTime.split(":").map(Number);
+        const durationMins = eh * 60 + em - (sh * 60 + sm);
+
+        const payload = {
+          user_id: user.id,
+          subject_id: item.subjectId,
+          date: selectedDate,
+          status: targetStatus,
+          ist_start_time: item.startTime + (item.startTime.length === 5 ? ":00" : ""),
+          ist_end_time: item.endTime + (item.endTime.length === 5 ? ":00" : ""),
+          duration_minutes: durationMins > 0 ? durationMins : 60,
+          class_type: item.classType || "theory",
+          teacher_name: item.teacher || null,
+        };
+
+        if (item.recordId) {
+          const { error } = await (supabase as any).from("attendance_records").update({ status: targetStatus }).eq("id", item.recordId);
+          if (error) throw error;
+        } else {
+          const { error } = await (supabase as any).from("attendance_records").insert([payload]);
+          if (error) throw error;
+        }
+        loadData();
+      } catch (e: any) {
+        alert("Error marking attendance: " + e.message);
+      } finally {
+        setMarkingIds((prev) => {
+          const copy = { ...prev };
+          delete copy[item.id];
+          return copy;
+        });
+      }
+    };
+
     if (status === "cancelled") {
-       // Direct insert for cancelled
-       setMarkingIds((prev) => ({ ...prev, [item.id]: true }));
-       try {
-         const { data: { user } } = await supabase.auth.getUser();
-         if (!user) throw new Error("Not logged in");
-
-         const [sh, sm] = item.startTime.split(":").map(Number);
-         const [eh, em] = item.endTime.split(":").map(Number);
-         const durationMins = eh * 60 + em - (sh * 60 + sm);
-
-         const { error } = await (supabase as any).from("attendance_records").insert([{
-           user_id: user.id,
-           subject_id: item.subjectId,
-           date: selectedDate,
-           status: status,
-           ist_start_time: item.startTime + (item.startTime.length === 5 ? ":00" : ""),
-           ist_end_time: item.endTime + (item.endTime.length === 5 ? ":00" : ""),
-           duration_minutes: durationMins > 0 ? durationMins : 60,
-         }]);
-
-         if (error) throw error;
-         loadData();
-       } catch (e: any) {
-         alert("Error marking attendance: " + e.message);
-       } finally {
-         setMarkingIds((prev) => {
-           const copy = { ...prev };
-           delete copy[item.id];
-           return copy;
-         });
-       }
+       await upsertStatus("cancelled");
        return;
     }
 
     if (status === "absent") {
-       // Direct insert for absent
-       setMarkingIds((prev) => ({ ...prev, [item.id]: true }));
-       try {
-         const { data: { user } } = await supabase.auth.getUser();
-         if (!user) throw new Error("Not logged in");
-
-         const [sh, sm] = item.startTime.split(":").map(Number);
-         const [eh, em] = item.endTime.split(":").map(Number);
-         const durationMins = eh * 60 + em - (sh * 60 + sm);
-
-         const { error } = await (supabase as any).from("attendance_records").insert([{
-           user_id: user.id,
-           subject_id: item.subjectId,
-           date: selectedDate,
-           status: status,
-           ist_start_time: item.startTime + (item.startTime.length === 5 ? ":00" : ""),
-           ist_end_time: item.endTime + (item.endTime.length === 5 ? ":00" : ""),
-           duration_minutes: durationMins > 0 ? durationMins : 60,
-         }]);
-
-         if (error) throw error;
-         loadData();
-       } catch (e: any) {
-         alert("Error marking attendance: " + e.message);
-       } finally {
-         setMarkingIds((prev) => {
-           const copy = { ...prev };
-           delete copy[item.id];
-           return copy;
-         });
-       }
+       await upsertStatus("absent");
        return;
     }
 
-    // For present, show confirmation sheet to capture rating/teacher/class_type
-    // We will build a mock timer state for the sheet
+    // For present / proxy, show confirmation sheet
     const mockStart = new Date(`${selectedDate}T${item.startTime.length === 5 ? item.startTime + ':00' : item.startTime}`);
     const mockEnd = new Date(`${selectedDate}T${item.endTime.length === 5 ? item.endTime + ':00' : item.endTime}`);
     
@@ -377,7 +375,6 @@ export default function DashboardScreen({ isActive = true }: { isActive?: boolea
       startTimeIso: mockStart.toISOString(),
     };
     
-    // We need to know if it's absent or present, so we store it in a state
     setPendingStatus(status);
     setPendingItem({ ...item, mockEndTimeIso: mockEnd.toISOString() });
     setActiveTimer(mockTimer);
@@ -459,6 +456,12 @@ export default function DashboardScreen({ isActive = true }: { isActive?: boolea
     return new Date(y, m - 1, d).getDay();
   }, [selectedDate]);
 
+  const holidayData = useMemo(() => {
+    return holidays.find(h => h.date === selectedDate);
+  }, [holidays, selectedDate]);
+  
+  const isHoliday = selectedDayOfWeek === 0 || !!holidayData;
+
   const todayScheduleItems = useMemo(() => {
     const todaySlots = schedule.filter(
       (slot) => slot.day_of_week === selectedDayOfWeek,
@@ -469,25 +472,29 @@ export default function DashboardScreen({ isActive = true }: { isActive?: boolea
         const subject = subjects.find((s) => s.id === slot.subject_id);
         const record = records.find((r) => {
           if (r.date !== selectedDate) return false;
-          if (r.subject_id !== slot.subject_id) return false;
-          if (!r.ist_start_time) return true;
-          return (
-            r.ist_start_time === slot.start_time ||
-            r.ist_start_time.startsWith(slot.start_time.substring(0, 5))
-          );
+          if (r.ist_start_time) {
+            return (
+              r.ist_start_time === slot.start_time ||
+              r.ist_start_time.startsWith(slot.start_time.substring(0, 5))
+            );
+          }
+          return r.subject_id === slot.subject_id;
         });
+        
+        const displaySubjectId = record ? record.subject_id : slot.subject_id;
+        const displaySubject = subjects.find(s => s.id === displaySubjectId);
 
         let teacherStr = "";
-        if (slot.default_teacher) {
-          teacherStr = slot.default_teacher;
+        if (record?.teacher_name) {
+          teacherStr = record.teacher_name;
           try {
             if (teacherStr.startsWith('{')) {
               const obj = JSON.parse(teacherStr);
               teacherStr = obj.s || obj.n;
             }
           } catch(e) {}
-        } else if (record?.teacher_name) {
-          teacherStr = record.teacher_name;
+        } else if (slot.default_teacher) {
+          teacherStr = slot.default_teacher;
           try {
             if (teacherStr.startsWith('{')) {
               const obj = JSON.parse(teacherStr);
@@ -499,9 +506,9 @@ export default function DashboardScreen({ isActive = true }: { isActive?: boolea
         return {
           id: slot.id,
           subjectId: slot.subject_id,
-          subjectName: subject?.name || "Unknown Subject",
-          subjectShortName: subject?.short_name || "UNK",
-          color: subject?.color || "#94A3B8",
+          subjectName: displaySubject?.name || subject?.name || "Unknown Subject",
+          subjectShortName: displaySubject?.short_name || subject?.short_name || "UNK",
+          color: displaySubject?.color || subject?.color || "#94A3B8",
           startTime: slot.start_time,
           endTime: slot.end_time,
           roomNumber: slot.room_number || "TBA",
@@ -509,6 +516,7 @@ export default function DashboardScreen({ isActive = true }: { isActive?: boolea
             | "present"
             | "absent"
             | "cancelled"
+            | "proxy"
             | undefined,
           recordId: record?.id,
           teacher: teacherStr,
@@ -540,7 +548,7 @@ export default function DashboardScreen({ isActive = true }: { isActive?: boolea
         startTime: r.ist_start_time ? r.ist_start_time.substring(0, 5) : "--:--",
         endTime: "--:--",
         roomNumber: "Extra",
-        recordStatus: r.status as "present" | "absent" | "cancelled",
+        recordStatus: r.status as "present" | "absent" | "cancelled" | "proxy",
         recordId: r.id,
         teacher: teacherStr,
         classType: r.class_type,
@@ -572,6 +580,7 @@ export default function DashboardScreen({ isActive = true }: { isActive?: boolea
   }, [todayScheduleItems]);
 
   return (
+    <>
     <ScrollView
       ref={scrollRef}
       style={styles.screen}
@@ -584,20 +593,26 @@ export default function DashboardScreen({ isActive = true }: { isActive?: boolea
           <View>
             <Text style={styles.greeting}>{greeting} 👋</Text>
             <View style={styles.dateNavigator}>
-              <TouchableOpacity onPress={() => changeDate(-1)} style={styles.dateNavButton}>
-                <Ionicons name="chevron-back" size={20} color={textColors.primary} />
-                <Text style={styles.dateNavText}>Prev</Text>
+              <TouchableOpacity 
+                  onPress={() => changeDate(-1)} 
+                  style={[styles.dateNavButton, (!activeSemester?.start_date || new Date(selectedDate) <= new Date(activeSemester.start_date)) && { opacity: 0.3 }]}
+                  disabled={!activeSemester?.start_date || new Date(selectedDate) <= new Date(activeSemester.start_date)}
+                >
+                  <Ionicons name="chevron-back" size={20} color={textColors.primary} />
+                  <Text style={styles.dateNavText}>Prev</Text>
+                </TouchableOpacity>
+              <TouchableOpacity onPress={() => setShowDatePicker(true)}>
+                <Text style={styles.dateNavCurrent}>
+                  {(() => {
+                    const [y, m, d] = selectedDate.split("-").map(Number);
+                    return new Date(y, m - 1, d).toLocaleDateString("en-US", {
+                      weekday: "short",
+                      month: "short",
+                      day: "numeric",
+                    });
+                  })()}
+                </Text>
               </TouchableOpacity>
-              <Text style={styles.dateNavCurrent}>
-                {(() => {
-                  const [y, m, d] = selectedDate.split("-").map(Number);
-                  return new Date(y, m - 1, d).toLocaleDateString("en-US", {
-                    weekday: "short",
-                    month: "short",
-                    day: "numeric",
-                  });
-                })()}
-              </Text>
               <TouchableOpacity onPress={() => changeDate(1)} style={styles.dateNavButton}>
                 <Text style={styles.dateNavText}>Next</Text>
                 <Ionicons name="chevron-forward" size={20} color={textColors.primary} />
@@ -670,6 +685,11 @@ export default function DashboardScreen({ isActive = true }: { isActive?: boolea
         timer={activeTimer}
         subject={subjects.find(s => s.id === activeTimer?.subjectId)}
         records={records}
+        allSubjects={subjects}
+        isProxy={pendingStatus === "proxy"}
+        initialData={pendingItem}
+        selectedDate={selectedDate}
+        mockEndTimeIso={pendingItem?.mockEndTimeIso}
         onConfirm={handleConfirmTimer}
         onDiscard={handleDiscardTimer}
         onCancel={handleCancelTimer}
@@ -785,13 +805,30 @@ export default function DashboardScreen({ isActive = true }: { isActive?: boolea
               ? "Today's Schedule" 
               : "Schedule"}
           </Text>
-          <Text style={styles.sectionBadge}>
-            {todayCompleted}/{todayTotal}
-          </Text>
+          {!isHoliday && (
+            <Text style={styles.sectionBadge}>
+              {todayCompleted}/{todayTotal}
+            </Text>
+          )}
         </View>
 
-        <View style={styles.scheduleList}>
-          {todayScheduleItems.map((item) => (
+        {isHoliday ? (
+          <View style={{ backgroundColor: '#f0fdf4', padding: 24, borderRadius: 16, alignItems: 'center', borderColor: '#bbf7d0', borderWidth: 1, marginTop: 8 }}>
+            <Text style={{ fontSize: 48, marginBottom: 16 }}>🎉</Text>
+            <Text style={{ fontFamily: fontFamily.bold, fontSize: fontSize.xl, color: '#166534', marginBottom: 8, textAlign: 'center' }}>
+              {holidayData ? holidayData.title : "It's Sunday!"}
+            </Text>
+            <Text style={{ fontFamily: fontFamily.medium, fontSize: fontSize.sm, color: '#15803d', textAlign: 'center', lineHeight: 20 }}>
+              Enjoy your day off! No classes scheduled for today. Kick back, relax, and have a great time!
+            </Text>
+          </View>
+        ) : (
+          <View style={styles.scheduleList}>
+            {todayScheduleItems.length === 0 ? (
+              <Text style={{ color: textColors.tertiary, fontFamily: fontFamily.regular, fontStyle: 'italic', paddingVertical: spacing.md }}>
+                No classes scheduled for today.
+              </Text>
+            ) : todayScheduleItems.map((item) => (
             <View
               key={item.id}
               style={[styles.scheduleCard, { borderLeftColor: item.color }]}
@@ -812,61 +849,19 @@ export default function DashboardScreen({ isActive = true }: { isActive?: boolea
                 ) : null}
               </View>
 
-              {item.recordStatus ? (
-                <View style={styles.statusRow}>
-                  <View
-                    style={[
-                      styles.statusIndicator,
-                      {
-                        backgroundColor:
-                          item.recordStatus === "present"
-                            ? attendance.present.base
-                            : item.recordStatus === "absent"
-                              ? attendance.absent.base
-                              : attendance.cancelled.base,
-                      },
-                    ]}
-                  />
-                  <Text
-                    style={[
-                      styles.statusText,
-                      {
-                        color:
-                          item.recordStatus === "present"
-                            ? attendance.present.base
-                            : item.recordStatus === "absent"
-                              ? attendance.absent.base
-                              : attendance.cancelled.base,
-                      },
-                    ]}
-                  >
-                    {item.recordStatus.toUpperCase()}
-                  </Text>
-                  <TouchableOpacity
-                    onPress={() => handleResetAttendance(item.recordId!)}
-                    style={styles.resetBtn}
-                  >
-                    <Ionicons
-                      name="refresh-outline"
-                      size={14}
-                      color={textColors.tertiary}
-                    />
-                  </TouchableOpacity>
-                </View>
-              ) : (
-                <View style={styles.actionsRow}>
+              <View style={styles.actionsRow}>
                   <TouchableOpacity
                     disabled={!!markingIds[item.id]}
                     onPress={() => handleMarkAttendance(item, "present")}
                     style={[
                       styles.actionBtn,
-                      { backgroundColor: attendance.present.surface, borderColor: attendance.present.base },
+                      { backgroundColor: item.recordStatus === "present" ? attendance.present.base : attendance.present.surface, borderColor: attendance.present.base },
                       markingIds[item.id] && { opacity: 0.5 },
                     ]}
                   >
                     <Text
                       style={{
-                        color: attendance.present.base,
+                        color: item.recordStatus === "present" ? "#fff" : attendance.present.base,
                         fontFamily: fontFamily.bold,
                         fontSize: 12,
                       }}
@@ -880,13 +875,13 @@ export default function DashboardScreen({ isActive = true }: { isActive?: boolea
                     onPress={() => handleMarkAttendance(item, "absent")}
                     style={[
                       styles.actionBtn,
-                      { backgroundColor: attendance.absent.surface, borderColor: attendance.absent.base },
+                      { backgroundColor: item.recordStatus === "absent" ? attendance.absent.base : attendance.absent.surface, borderColor: attendance.absent.base },
                       markingIds[item.id] && { opacity: 0.5 },
                     ]}
                   >
                     <Text
                       style={{
-                        color: attendance.absent.base,
+                        color: item.recordStatus === "absent" ? "#fff" : attendance.absent.base,
                         fontFamily: fontFamily.bold,
                         fontSize: 12,
                       }}
@@ -897,16 +892,36 @@ export default function DashboardScreen({ isActive = true }: { isActive?: boolea
 
                   <TouchableOpacity
                     disabled={!!markingIds[item.id]}
-                    onPress={() => handleMarkAttendance(item, "cancelled")}
+                    onPress={() => handleMarkAttendance(item, "proxy")}
                     style={[
                       styles.actionBtn,
-                      { backgroundColor: attendance.cancelled.surface, borderColor: attendance.cancelled.base },
+                      { backgroundColor: item.recordStatus === "proxy" ? "#3b82f6" : "rgba(59, 130, 246, 0.12)", borderColor: "#3b82f6" },
                       markingIds[item.id] && { opacity: 0.5 },
                     ]}
                   >
                     <Text
                       style={{
-                        color: attendance.cancelled.base,
+                        color: item.recordStatus === "proxy" ? "#fff" : "#3b82f6",
+                        fontFamily: fontFamily.bold,
+                        fontSize: 12,
+                      }}
+                    >
+                      Proxy
+                    </Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    disabled={!!markingIds[item.id]}
+                    onPress={() => handleMarkAttendance(item, "cancelled")}
+                    style={[
+                      styles.actionBtn,
+                      { backgroundColor: item.recordStatus === "cancelled" ? attendance.cancelled.base : attendance.cancelled.surface, borderColor: attendance.cancelled.base },
+                      markingIds[item.id] && { opacity: 0.5 },
+                    ]}
+                  >
+                    <Text
+                      style={{
+                        color: item.recordStatus === "cancelled" ? "#fff" : attendance.cancelled.base,
                         fontFamily: fontFamily.bold,
                         fontSize: 12,
                       }}
@@ -915,7 +930,21 @@ export default function DashboardScreen({ isActive = true }: { isActive?: boolea
                     </Text>
                   </TouchableOpacity>
                 </View>
-              )}
+                {item.recordStatus && (
+                  <View style={{flexDirection: "row", justifyContent: "flex-end", marginTop: 8}}>
+                    <TouchableOpacity
+                      onPress={() => handleResetAttendance(item.recordId!)}
+                      style={styles.resetBtn}
+                    >
+                      <Ionicons
+                        name="trash-outline"
+                        size={14}
+                        color={textColors.tertiary}
+                      />
+                      <Text style={{ fontSize: 12, color: textColors.tertiary, marginLeft: 4 }}>Clear</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
             </View>
           ))}
 
@@ -929,11 +958,12 @@ export default function DashboardScreen({ isActive = true }: { isActive?: boolea
             >
               No schedule for today.
             </Text>
-          )}
+            )}
+          </View>
+        )}
         </View>
-      </View>
 
-      {/* ✨ All Subjects ✨ */}
+      {/* 📘 All Subjects 📘 */}
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Subjects</Text>
@@ -996,11 +1026,11 @@ export default function DashboardScreen({ isActive = true }: { isActive?: boolea
 
               return (
                 <SubjectCard
-                  key={subject.id}
-                  subject={mappedSubject as any}
-                  onStartTimer={handleStartTimer}
-                  showStartTimer={isScheduledToday}
-                />
+                    key={subject.id}
+                    subject={mappedSubject as any}
+                    onStartTimer={handleStartTimer}
+                    showStartTimer={isScheduledToday && !isHoliday}
+                  />
               );
             });
           })()}
@@ -1010,6 +1040,18 @@ export default function DashboardScreen({ isActive = true }: { isActive?: boolea
       {/* Bottom padding for nav bar */}
       <View style={{ height: layout.bottomNavHeight + spacing["2xl"] }} />
     </ScrollView>
+
+    <DatePickerSheet
+      visible={showDatePicker}
+      initialDate={selectedDate}
+      minDate={activeSemester?.start_date}
+      onClose={() => setShowDatePicker(false)}
+      onSelect={(date) => {
+        setShowDatePicker(false);
+        setSelectedDate(date);
+      }}
+    />
+    </>
   );
 }
 
@@ -1247,10 +1289,7 @@ const styles = StyleSheet.create({
     fontSize: 10,
     letterSpacing: 0.5,
   },
-  resetBtn: {
-    marginLeft: "auto",
-    padding: 4,
-  },
+  resetBtn: { flexDirection: "row", alignItems: "center", padding: 4 },
   actionsRow: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -1258,8 +1297,7 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   actionBtn: {
-    flex: 1,
-    minWidth: 80,
+    width: "48%", // 2x2 grid
     paddingVertical: spacing.xs + 2,
     borderRadius: radius.md,
     borderWidth: 1,

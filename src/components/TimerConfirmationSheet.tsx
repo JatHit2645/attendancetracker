@@ -36,6 +36,7 @@ interface TimerConfirmationSheetProps {
   subject?: any; // Add subject prop to fetch default teachers
   initialData?: { classType?: string; teacher?: string; rating?: number } | null;
   mockEndTimeIso?: string;
+  selectedDate?: string;
   allSubjects?: any[];
   isProxy?: boolean;
   onConfirm: (start: Date, end: Date, classType: string, teacherName: string, rating: number | null, proxySubjectId?: string) => Promise<void> | void;
@@ -101,6 +102,8 @@ export default function TimerConfirmationSheet({
   timer,
   records,
   subject,
+  initialData,
+  selectedDate,
   onConfirm,
   onDiscard,
   onCancel,
@@ -181,11 +184,28 @@ mockEndTimeIso,
       setEndTimeText(mockEndTimeIso ? formatISTTime(new Date(mockEndTimeIso)) : formatISTTime(new Date()));
       setIsSubmitting(false);
 
-      if (subject && subject.teachers && subject.teachers.length > 0) {
+      if (initialData !== undefined && initialData !== null) {
+        // Match initialData.teacher (plain text) to the raw teacher entry in subject.teachers
+        let matchedTeacher = initialData.teacher || '';
+        if (matchedTeacher && subject && subject.teachers) {
+          const rawMatch = subject.teachers.find((t: string) => {
+            try {
+              if (t.startsWith('{')) {
+                const obj = JSON.parse(t);
+                return (obj.s || obj.n) === matchedTeacher;
+              }
+            } catch(e) {}
+            return t === matchedTeacher;
+          });
+          if (rawMatch) matchedTeacher = rawMatch;
+        }
+        setTeacherName(matchedTeacher);
+        if (initialData.classType) setClassType(initialData.classType as any);
+      } else if (subject && subject.teachers && subject.teachers.length > 0) {
         setTeacherName(subject.teachers[0]);
       }
     }
-  }, [visible, timer, subject]);
+  }, [visible, timer, subject, initialData, mockEndTimeIso, selectedDate]);
 
   if (!timer) return null;
 
@@ -203,7 +223,7 @@ mockEndTimeIso,
   } else if (parsedEnd.getTime() > new Date().getTime()) {
     currentError = 'End Time cannot be in the future';
   } else {
-    const todayStr = new Date().toLocaleDateString('en-CA');
+    const todayStr = selectedDate || new Date().toLocaleDateString('en-CA');
     const hasOverlap = records.some(r => {
       if (r.date !== todayStr) return false;
       if (!r.ist_start_time || !r.ist_end_time) return false;
@@ -215,7 +235,7 @@ mockEndTimeIso,
       return parsedStart.getTime() < extEnd.getTime() && parsedEnd.getTime() > extStart.getTime();
     });
     if (hasOverlap) {
-      currentError = 'This slot overlaps with another class today';
+      currentError = 'This slot overlaps with another class on this date';
     }
   }
 
@@ -237,7 +257,7 @@ mockEndTimeIso,
     if (isSubmitting || currentError || !parsedStart || !parsedEnd) return;
     setIsSubmitting(true);
     try {
-      await onConfirm(parsedStart, parsedEnd, classType, teacherName, rating ? parseFloat(rating) : null);
+      await onConfirm(parsedStart, parsedEnd, classType, teacherName, rating ? parseFloat(rating) : null, isProxy ? proxySubjectId : undefined);
     } catch (e) {
       console.error(e);
     } finally {
@@ -365,11 +385,14 @@ mockEndTimeIso,
                     </View>
                   </View>
 
-                  {subject && subject.teachers && subject.teachers.length > 0 && (
-                    <View style={styles.formGroup}>
-                      <Text style={styles.label}>TEACHER</Text>
-                      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm }}>
-                        {subject.teachers.map((t: string) => {
+                  {(() => {
+                    const activeSubject = (isProxy && proxySubjectId) ? allSubjects.find(s => s.id === proxySubjectId) : subject;
+                    if (!activeSubject || !activeSubject.teachers || activeSubject.teachers.length === 0) return null;
+                    return (
+                      <View style={styles.formGroup}>
+                        <Text style={styles.label}>TEACHER</Text>
+                        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm }}>
+                          {activeSubject.teachers.map((t: string) => {
                           let display = t;
                           try {
                             if (t.startsWith('{')) {
@@ -392,7 +415,8 @@ mockEndTimeIso,
                         })}
                       </View>
                     </View>
-                  )}
+                    );
+                  })()}
 
                   <View style={styles.formGroup}>
                     <Text style={styles.label}>RATING / 10 (OPTIONAL)</Text>

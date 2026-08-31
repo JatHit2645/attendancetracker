@@ -290,10 +290,7 @@ export default function SubjectsScreen({ isActive = true }: { isActive?: boolean
               totalAttended,
               totalConducted,
             );
-            const _status = getAttendanceStatus(
-              percentage,
-              subject.target_threshold,
-            );
+            const _status = percentage < 0 ? "safe" : getAttendanceStatus(percentage, subject.target_threshold);
 
             return (
               <TouchableOpacity
@@ -342,7 +339,7 @@ export default function SubjectsScreen({ isActive = true }: { isActive?: boolean
 
                   <View style={styles.currentSection}>
                     <Text style={styles.currentLabel}>CURRENT</Text>
-                    <Text style={styles.currentValue}>{percentage}%</Text>
+                    <Text style={styles.currentValue}>{percentage < 0 ? "-" : `${percentage}%`}</Text>
                   </View>
                 </View>
               </TouchableOpacity>

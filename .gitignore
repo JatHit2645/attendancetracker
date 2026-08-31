@@ -40,3 +40,13 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# temp fix scripts and scratch
+fix_*.py
+fix_*.js
+*.patch
+*.txt
+scratch/
+test_bundle.js
+*.rej
+

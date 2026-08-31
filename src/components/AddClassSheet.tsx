@@ -209,18 +209,32 @@ export default function AddClassSheet({ visible, subjects, semesters, initialSem
 
   const handleSave = () => {
     if (!selectedSubjectId || !selectedDay || !startTime || !endTime) return;
-    onSave({
-      semesterId: selectedSemesterId || undefined,
-      subjectId: selectedSubjectId,
-      dayOfWeek: selectedDay,
-      startTime,
-      endTime,
-      roomNumber: roomNumber.trim() || undefined,
-      class_type: classType,
-      default_teacher: defaultTeacher || undefined,
-      date: dateText.replace(/\//g, '-') || undefined,
-    });
-    onClose();
+
+    const saveChanges = () => {
+      onSave({
+        semesterId: selectedSemesterId || undefined,
+        subjectId: selectedSubjectId,
+        dayOfWeek: selectedDay,
+        startTime,
+        endTime,
+        roomNumber: roomNumber.trim() || undefined,
+        class_type: classType,
+        default_teacher: defaultTeacher || undefined,
+        date: dateText.replace(/\//g, '-') || undefined,
+      });
+      onClose();
+    };
+
+    if (initialData) {
+      import('react-native').then(({ Alert }) => {
+        Alert.alert("Confirm Edit", "Are you sure you want to save these changes to the timetable entry?", [
+          { text: "Cancel", style: "cancel" },
+          { text: "Save", onPress: saveChanges }
+        ]);
+      });
+    } else {
+      saveChanges();
+    }
   };
 
   return (
@@ -241,7 +255,6 @@ export default function AddClassSheet({ visible, subjects, semesters, initialSem
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
           style={styles.keyboardContainer}
         >
-          <SafeAreaView style={{ flex: 1, justifyContent: 'flex-end' }}>
           <View style={[styles.sheetContainer, { maxHeight: '85%' }]}>
             {Platform.OS !== 'web' && (
               <View style={styles.handleContainer}>
@@ -416,7 +429,6 @@ export default function AddClassSheet({ visible, subjects, semesters, initialSem
                 )}
                 </View>
           </View>
-        </SafeAreaView>
         </KeyboardAvoidingView>
       </View>
     </Modal>
