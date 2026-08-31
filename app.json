@@ -47,7 +47,41 @@
         }
       ],
       "expo-sharing",
-      "expo-updates"
+      "expo-updates",
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "Allow Attendance Tracker to use biometric authentication for app unlock."
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon.png",
+          "color": "#6366F1"
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Allow Attendance Tracker to access your location to show real-time navigation on campus.",
+          "locationAlwaysPermission": "Allow Attendance Tracker to access your location to show real-time navigation on campus.",
+          "locationWhenInUsePermission": "Allow Attendance Tracker to access your location to show real-time navigation on campus."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow Attendance Tracker to access your photos for profile pictures."
+        }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow Attendance Tracker to access your camera for QR scanning."
+        }
+      ],
+      "expo-document-picker"
     ],
     "extra": {
       "eas": {
