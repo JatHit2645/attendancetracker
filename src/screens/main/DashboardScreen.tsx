@@ -843,9 +843,20 @@ export default function DashboardScreen({ isActive = true }: { isActive?: boolea
                   </Text>
                 </View>
                 {item.roomNumber ? (
-                  <Text style={styles.scheduleRoomText}>
-                    Room {item.roomNumber}
-                  </Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <Text style={styles.scheduleRoomText}>
+                      Room {item.roomNumber}
+                    </Text>
+                    <TouchableOpacity
+                      onPress={() => {
+                        // Navigate to Campus Map tab with building context
+                        DeviceEventEmitter.emit('NAVIGATE_TO_MAP', { roomNumber: item.roomNumber });
+                      }}
+                      style={{ padding: 4, borderRadius: 12, backgroundColor: accent.primarySurface }}
+                    >
+                      <Ionicons name="map-outline" size={14} color={accent.primary} />
+                    </TouchableOpacity>
+                  </View>
                 ) : null}
               </View>
 

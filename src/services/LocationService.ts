@@ -116,5 +116,14 @@ export const LocationService = {
       if (stored) return JSON.parse(stored);
     } catch (e) {}
     return { dx: 0, dy: 0 };
+  },
+
+  async resetCalibration() {
+    try {
+      await AsyncStorage.removeItem(LOCATION_OFFSET_KEY);
+    } catch (e) {
+      console.warn("Reset Calibration Error:", e);
+    }
+    return { dx: 0, dy: 0 };
   }
 };

@@ -5,14 +5,18 @@ export interface CampusBuilding {
   shortName: string;
   type: string;
   description: string;
-  x: number;
-  y: number;
+  x: number;  // center X for camera targeting
+  y: number;  // center Y for camera targeting  
   color: string;
-  floors?: number;
+  floors: number;
+  polygon: string;  // SVG polygon points string
+  heightFactor: number;  // 1-4, how tall to extrude in 3D mode
+  entranceNode: string;  // ID of the entrance node in MapGraph
+  category: 'department' | 'classroom' | 'amenity' | 'admin' | 'garden' | 'workshop' | 'research';
 }
 
-export const MAP_IMAGE_WIDTH = 1024;
-export const MAP_IMAGE_HEIGHT = 573;
+export const MAP_IMAGE_WIDTH = 800;
+export const MAP_IMAGE_HEIGHT = 650;
 
 export const CAMPUS_BUILDINGS: CampusBuilding[] = [
   {
@@ -26,6 +30,10 @@ export const CAMPUS_BUILDINGS: CampusBuilding[] = [
     y: 195,
     color: '#EAB308',
     floors: 3,
+    polygon: '480.5,225.4 485.4,194.1 481.4,179.5 557.6,178.5 532.2,201.0 531.2,180.5 552.7,179.5 531.2,179.5 530.3,205.8 528.3,179.5 514.6,179.5 512.7,199.0 503.9,187.3 528.3,208.8 506.8,229.3',
+    heightFactor: 3,
+    entranceNode: 'door_1',
+    category: 'admin',
   },
   {
     id: '2',
@@ -38,6 +46,10 @@ export const CAMPUS_BUILDINGS: CampusBuilding[] = [
     y: 182,
     color: '#EC4899',
     floors: 3,
+    polygon: '423.8,276.1 421.9,271.2 463.9,229.3 466.8,229.3 468.8,257.5 452.1,260.5 451.2,276.1',
+    heightFactor: 3,
+    entranceNode: 'door_2',
+    category: 'department',
   },
   {
     id: '3',
@@ -50,6 +62,10 @@ export const CAMPUS_BUILDINGS: CampusBuilding[] = [
     y: 240,
     color: '#F97316',
     floors: 3,
+    polygon: '373.0,255.6 392.6,254.6 395.5,259.5 395.5,276.1 373.0,277.1',
+    heightFactor: 3,
+    entranceNode: 'door_3',
+    category: 'department',
   },
   {
     id: '4',
@@ -62,6 +78,10 @@ export const CAMPUS_BUILDINGS: CampusBuilding[] = [
     y: 280,
     color: '#10B981',
     floors: 3,
+    polygon: '250.0,442.9 304.7,388.3 335.0,418.5 317.4,437.1 322.3,445.8 303.7,465.3 274.4,439.0 260.7,452.7',
+    heightFactor: 3,
+    entranceNode: 'door_4',
+    category: 'department',
   },
   {
     id: '5',
@@ -74,6 +94,10 @@ export const CAMPUS_BUILDINGS: CampusBuilding[] = [
     y: 345,
     color: '#64748B',
     floors: 3,
+    polygon: '300.8,468.3 328.1,453.6 349.6,469.2 356.4,466.3 349.6,472.2 331.1,454.6 312.5,479.0',
+    heightFactor: 3,
+    entranceNode: 'door_5',
+    category: 'department',
   },
   {
     id: '6',
@@ -86,6 +110,10 @@ export const CAMPUS_BUILDINGS: CampusBuilding[] = [
     y: 185,
     color: '#A855F7',
     floors: 3,
+    polygon: '264.6,275.1 265.6,254.6 290.0,255.6 290.0,229.3 313.5,228.3 314.5,204.9 360.4,205.8 359.4,276.1',
+    heightFactor: 3,
+    entranceNode: 'door_6',
+    category: 'department',
   },
   {
     id: '7',
@@ -98,6 +126,10 @@ export const CAMPUS_BUILDINGS: CampusBuilding[] = [
     y: 175,
     color: '#475569',
     floors: 4,
+    polygon: '155.3,212.7 176.8,210.7 187.5,187.3 246.1,176.6 247.1,227.3 212.9,249.7 221.7,278.0 161.1,279.0 152.3,212.7',
+    heightFactor: 4,
+    entranceNode: 'door_7',
+    category: 'department',
   },
   {
     id: '8',
@@ -110,6 +142,10 @@ export const CAMPUS_BUILDINGS: CampusBuilding[] = [
     y: 245,
     color: '#0EA5E9',
     floors: 4,
+    polygon: '264.6,305.4 272.5,301.5 281.2,288.8 301.8,289.7 302.7,295.6 309.6,297.5 309.6,325.8 302.7,327.8 303.7,333.6 274.4,334.6 270.5,327.8',
+    heightFactor: 4,
+    entranceNode: 'door_8',
+    category: 'department',
   },
   {
     id: '9',
@@ -122,6 +158,10 @@ export const CAMPUS_BUILDINGS: CampusBuilding[] = [
     y: 302,
     color: '#F43F5E',
     floors: 4,
+    polygon: '155.3,330.7 217.8,329.7 243.2,338.5 243.2,352.2 226.6,352.2 218.8,343.4 201.2,361.0 226.6,371.7 228.5,385.3 198.2,387.3 197.3,360.0 191.4,361.0 188.5,335.6 156.2,351.2',
+    heightFactor: 4,
+    entranceNode: 'door_9',
+    category: 'department',
   },
   {
     id: '10',
@@ -134,6 +174,10 @@ export const CAMPUS_BUILDINGS: CampusBuilding[] = [
     y: 260,
     color: '#EF4444',
     floors: 3,
+    polygon: '102.5,219.5 138.7,221.5 136.7,321.0 101.6,320.0 100.6,279.0 105.5,273.2 100.6,261.5',
+    heightFactor: 3,
+    entranceNode: 'door_10',
+    category: 'classroom',
   },
   {
     id: '11',
@@ -146,6 +190,10 @@ export const CAMPUS_BUILDINGS: CampusBuilding[] = [
     y: 458,
     color: '#0D9488',
     floors: 1,
+    polygon: '238.3,480.0 258.8,500.5 283.2,468.3 281.2,478.0 267.6,488.8 240.2,478.0 258.8,464.4 277.3,476.1 271.5,484.9',
+    heightFactor: 1,
+    entranceNode: 'door_11',
+    category: 'workshop',
   },
   {
     id: '12',
@@ -158,6 +206,10 @@ export const CAMPUS_BUILDINGS: CampusBuilding[] = [
     y: 495,
     color: '#FB923C',
     floors: 3,
+    polygon: '208.0,510.2 216.8,506.3 238.3,480.0 243.2,489.7 256.8,499.5 229.5,526.8 258.8,500.5 229.5,529.7',
+    heightFactor: 3,
+    entranceNode: 'door_12',
+    category: 'department',
   },
   {
     id: '13a',
@@ -170,6 +222,10 @@ export const CAMPUS_BUILDINGS: CampusBuilding[] = [
     y: 435,
     color: '#84CC16',
     floors: 3,
+    polygon: '419.9,451.7 430.7,462.4 444.3,463.4 441.4,467.3 437.5,469.2 420.9,485.8 401.4,466.3 405.3,461.4',
+    heightFactor: 3,
+    entranceNode: 'door_13a',
+    category: 'classroom',
   },
   {
     id: '13b',
@@ -182,6 +238,10 @@ export const CAMPUS_BUILDINGS: CampusBuilding[] = [
     y: 420,
     color: '#84CC16',
     floors: 3,
+    polygon: '440,405 480,405 480,435 440,435',
+    heightFactor: 3,
+    entranceNode: 'door_13b',
+    category: 'classroom',
   },
   {
     id: '13c',
@@ -194,6 +254,10 @@ export const CAMPUS_BUILDINGS: CampusBuilding[] = [
     y: 495,
     color: '#84CC16',
     floors: 3,
+    polygon: '436,480 476,480 476,510 436,510',
+    heightFactor: 3,
+    entranceNode: 'door_13c',
+    category: 'classroom',
   },
   {
     id: '14',
@@ -206,6 +270,10 @@ export const CAMPUS_BUILDINGS: CampusBuilding[] = [
     y: 365,
     color: '#F472B6',
     floors: 2,
+    polygon: '429.7,493.6 447.3,513.1 460.0,503.4 461.9,497.5 478.5,485.8 460.0,464.4',
+    heightFactor: 2,
+    entranceNode: 'door_14',
+    category: 'research',
   },
   {
     id: '15',
@@ -218,6 +286,10 @@ export const CAMPUS_BUILDINGS: CampusBuilding[] = [
     y: 350,
     color: '#15803D',
     floors: 0,
+    polygon: '502.9,294.6 502.0,353.2 400.4,456.6 387.7,443.9 404.3,424.4 370.1,390.2 345.7,403.9 320.3,380.5 406.2,293.6',
+    heightFactor: 0,
+    entranceNode: 'door_15',
+    category: 'garden',
   },
   {
     id: '16',
@@ -230,6 +302,10 @@ export const CAMPUS_BUILDINGS: CampusBuilding[] = [
     y: 485,
     color: '#059669',
     floors: 3,
+    polygon: '571.3,422.4 594.7,431.2 606.4,423.4 614.3,433.2 600.6,449.7 620.1,454.6 620.1,469.2 634.8,483.9 620.1,500.5 620.1,515.1 603.5,517.1 588.9,531.7 572.3,517.1 558.6,517.1 555.7,500.5 541.0,485.8 555.7,470.2 556.6,454.6 576.2,449.7 561.5,433.2',
+    heightFactor: 3,
+    entranceNode: 'door_16',
+    category: 'amenity',
   },
   {
     id: '17',
@@ -242,5 +318,9 @@ export const CAMPUS_BUILDINGS: CampusBuilding[] = [
     y: 133,
     color: '#6366F1',
     floors: 1,
+    polygon: '65.4,99.5 50.8,115.1 50.8,134.6 43.9,140.5 50.8,146.3 54.7,160.0 73.2,164.9 81.1,161.9 88.9,166.8 105.5,154.1 94.7,147.3 89.8,116.1 75.2,115.1 74.2,103.4',
+    heightFactor: 1,
+    entranceNode: 'door_17',
+    category: 'amenity',
   },
 ];
