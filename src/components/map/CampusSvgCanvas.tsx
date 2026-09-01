@@ -2,7 +2,7 @@ import React, { useMemo, useEffect } from 'react';
 import { View, StyleSheet } from 'react-native';
 import Svg, { Polygon, Polyline, Circle, G, Text as SvgText, Rect, Line, Defs, LinearGradient, Stop } from 'react-native-svg';
 import Animated, { useSharedValue, useAnimatedProps, withRepeat, withTiming, Easing } from 'react-native-reanimated';
-import { CampusBuilding } from '../../data/CampusBuildings';
+import { CampusBuilding, MAIN_PATHS } from '../../data/CampusBuildings';
 import { MapNode } from '../../data/MapGraph';
 import { accent } from '../../theme/colors';
 
@@ -189,10 +189,36 @@ export const CampusSvgCanvas: React.FC<CampusSvgCanvasProps> = ({
       <Svg width={width} height={height} viewBox="0 0 800 650">
         <Defs>
           <LinearGradient id="groundGrad" x1="0" y1="0" x2="1" y2="1">
-            <Stop offset="0" stopColor="#1E293B" stopOpacity="1" />
-            <Stop offset="1" stopColor="#0F172A" stopOpacity="1" />
+            <Stop offset="0" stopColor="#0F172A" stopOpacity="1" />
+            <Stop offset="1" stopColor="#020617" stopOpacity="1" />
           </LinearGradient>
         </Defs>
+
+        {/* Background */}
+        <Rect x="0" y="0" width="100%" height="100%" fill="url(#groundGrad)" />
+
+        {/* Main Paths (Roads) */}
+        {MAIN_PATHS.map((path, idx) => (
+          <G key={`main-path-${idx}`}>
+            <Polyline
+              points={path.map(p => `${p.x},${p.y}`).join(' ')}
+              fill="none"
+              stroke="#334155" // Gray paved road
+              strokeWidth="12"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+            <Polyline
+              points={path.map(p => `${p.x},${p.y}`).join(' ')}
+              fill="none"
+              stroke="#94A3B8" // Center line
+              strokeWidth="1.5"
+              strokeDasharray="6,6"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </G>
+        ))}
 
         {/* Buildings */}
         {sortedBuildings.map(renderBuilding)}

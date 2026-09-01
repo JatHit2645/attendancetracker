@@ -256,7 +256,6 @@ export default function CampusMapScreen() {
 
       <GestureDetector gesture={composedGesture}>
         <Animated.View style={[styles.mapViewport, animatedMapStyle]}>
-          <Image source={require('../../../assets/campus_map.png')} style={{ position: 'absolute', width: MAP_IMAGE_WIDTH, height: MAP_IMAGE_HEIGHT, opacity: 0.9 }} resizeMode="contain" />
           <CampusSvgCanvas
             width={MAP_IMAGE_WIDTH}
             height={MAP_IMAGE_HEIGHT}
