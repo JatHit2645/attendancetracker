@@ -201,7 +201,7 @@ export const CampusSvgCanvas: React.FC<CampusSvgCanvasProps> = ({
         {MAIN_PATHS.map((path, idx) => (
           <G key={`main-path-${idx}`}>
             <Polyline
-              points={path.map(p => `${p.x},${p.y}`).join(' ')}
+              points={path.nodes.map(p => `${p.x},${p.y}`).join(' ')}
               fill="none"
               stroke="#334155" // Gray paved road
               strokeWidth="12"
@@ -209,7 +209,7 @@ export const CampusSvgCanvas: React.FC<CampusSvgCanvasProps> = ({
               strokeLinejoin="round"
             />
             <Polyline
-              points={path.map(p => `${p.x},${p.y}`).join(' ')}
+              points={path.nodes.map(p => `${p.x},${p.y}`).join(' ')}
               fill="none"
               stroke="#94A3B8" // Center line
               strokeWidth="1.5"
