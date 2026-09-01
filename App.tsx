@@ -1,4 +1,4 @@
-import "react-native-gesture-handler";
+
 import { useCallback, useState, useEffect, useRef } from "react";
 import {
   View,
@@ -37,6 +37,7 @@ import { SyncService } from "./src/services/SyncService";
 import { supabase } from "./src/lib/supabase";
 import { NotificationService } from "./src/services/NotificationService";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { ErrorBoundary } from "./src/ErrorBoundary";
 
 // Keep the splash screen visible while we load fonts
 SplashScreen.preventAutoHideAsync().catch(() => {});
@@ -257,16 +258,18 @@ export default function App() {
 
 
     return (
-      <GestureHandlerRootView style={{ flex: 1 }}>
-        <SafeAreaProvider>
-          <BottomSheetModalProvider>
-            <View style={styles.container}>
-              {renderContent()}
-              <StatusBar style="light" />
-            </View>
-          </BottomSheetModalProvider>
-        </SafeAreaProvider>
-      </GestureHandlerRootView>
+      <ErrorBoundary>
+        <GestureHandlerRootView style={{ flex: 1 }}>
+          <SafeAreaProvider>
+            <BottomSheetModalProvider>
+              <View style={styles.container}>
+                {renderContent()}
+                <StatusBar style="light" />
+              </View>
+            </BottomSheetModalProvider>
+          </SafeAreaProvider>
+        </GestureHandlerRootView>
+      </ErrorBoundary>
     );
 }
 
