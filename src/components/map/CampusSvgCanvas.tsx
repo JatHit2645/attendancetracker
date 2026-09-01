@@ -20,7 +20,8 @@ interface CampusSvgCanvasProps {
   onBuildingPress: (building: CampusBuilding) => void;
 }
 
-function parsePoints(points: string): { x: number; y: number }[] {
+function parsePoints(points: string | undefined): { x: number; y: number }[] {
+  if (!points) return [];
   return points.split(' ').map(p => {
     const [x, y] = p.split(',').map(Number);
     return { x, y };
@@ -31,7 +32,12 @@ function formatPoints(points: { x: number; y: number }[]): string {
   return points.map(p => `${p.x},${p.y}`).join(' ');
 }
 
-function getCenter(points: { x: number; y: number }[]): { x: number; y: number } {
+function getCenter(building: CampusBuilding): { x: number; y: number } {
+  if (building.shapeType === 'circle' && building.circle) {
+    return { x: building.circle.cx, y: building.circle.cy };
+  }
+  const points = parsePoints(building.polygon);
+  if (points.length === 0) return { x: building.x, y: building.y };
   let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
   points.forEach(p => {
     if (p.x < minX) minX = p.x;
@@ -84,120 +90,96 @@ export const CampusSvgCanvas: React.FC<CampusSvgCanvasProps> = ({
 
   const sortedBuildings = useMemo(() => {
     return [...buildings].sort((a, b) => {
-      const aCenter = getCenter(parsePoints(a.polygon));
-      const bCenter = getCenter(parsePoints(b.polygon));
+      const aCenter = getCenter(a);
+      const bCenter = getCenter(b);
       return aCenter.y - bCenter.y;
     });
   }, [buildings]);
 
   const renderBuilding = (building: CampusBuilding) => {
     const isSelected = selectedBuildingId === building.id;
-    const basePts = parsePoints(building.polygon);
-    const center = getCenter(basePts);
+    const center = getCenter(building);
     const heightFactor = building.heightFactor || 1;
     
     // Isometric shift
     const dx = is3D ? -heightFactor * 6 : 0;
     const dy = is3D ? -heightFactor * 12 : 0;
-    
-    const roofPts = basePts.map(p => ({ x: p.x + dx, y: p.y + dy }));
-    const baseString = formatPoints(basePts);
-    const roofString = formatPoints(roofPts);
 
     const darkColor = adjustColor(building.color, -40);
     const lightColor = adjustColor(building.color, 20);
 
+    const isCircle = building.shapeType === 'circle' && building.circle;
+
     return (
       <G key={building.id} onPress={() => onBuildingPress(building)}>
         {/* Shadow */}
-        {is3D && (
-          <Polygon
-            points={formatPoints(basePts.map(p => ({ x: p.x + 8, y: p.y + 8 })))}
-            fill="#000000"
-            opacity={0.3}
-          />
+        {is3D && isCircle && (
+          <Circle cx={building.circle!.cx + 8} cy={building.circle!.cy + 8} r={building.circle!.r} fill="#000000" opacity={0.3} />
+        )}
+        {is3D && !isCircle && building.polygon && (
+          <Polygon points={formatPoints(parsePoints(building.polygon).map(p => ({ x: p.x + 8, y: p.y + 8 })))} fill="#000000" opacity={0.3} />
         )}
 
-        {/* 3D Walls */}
-        {is3D && heightFactor > 0 && (
+        {/* 3D Walls for Circle */}
+        {is3D && heightFactor > 0 && isCircle && (
           <G>
-            {basePts.map((p, i) => {
-              const nextIdx = (i + 1) % basePts.length;
-              const nextP = basePts[nextIdx];
-              // Wall quad
-              const wallPts = [
-                { x: p.x, y: p.y },
-                { x: nextP.x, y: nextP.y },
-                { x: nextP.x + dx, y: nextP.y + dy },
-                { x: p.x + dx, y: p.y + dy }
-              ];
-              return (
-                <Polygon
-                  key={`wall-${i}`}
-                  points={formatPoints(wallPts)}
-                  fill={darkColor}
-                  stroke="rgba(255,255,255,0.3)"
-                  strokeWidth="0.5"
-                />
-              );
-            })}
-            {/* Roof */}
-            <Polygon
-              points={roofString}
-              fill={lightColor}
-              stroke="#ffffff"
-              strokeWidth="1"
-            />
+            <Circle cx={building.circle!.cx + dx/2} cy={building.circle!.cy + dy/2} r={building.circle!.r} fill={darkColor} />
+            <Circle cx={building.circle!.cx + dx} cy={building.circle!.cy + dy} r={building.circle!.r} fill={lightColor} stroke="#ffffff" strokeWidth="1" />
           </G>
         )}
 
-        {/* Base / Flat view */}
-        {!is3D && (
-          <Polygon
-            points={baseString}
-            fill={building.color}
-            opacity={0.85}
-            stroke="#ffffff"
-            strokeWidth="1"
-          />
+        {/* 3D Walls for Polygon */}
+        {is3D && heightFactor > 0 && !isCircle && building.polygon && (() => {
+          const basePts = parsePoints(building.polygon!);
+          const roofPts = basePts.map(p => ({ x: p.x + dx, y: p.y + dy }));
+          return (
+            <G>
+              {basePts.map((p, i) => {
+                const nextIdx = (i + 1) % basePts.length;
+                const nextP = basePts[nextIdx];
+                const wallPts = [
+                  { x: p.x, y: p.y },
+                  { x: nextP.x, y: nextP.y },
+                  { x: nextP.x + dx, y: nextP.y + dy },
+                  { x: p.x + dx, y: p.y + dy }
+                ];
+                return (
+                  <Polygon key={`wall-${i}`} points={formatPoints(wallPts)} fill={darkColor} stroke="rgba(255,255,255,0.3)" strokeWidth="0.5" />
+                );
+              })}
+              <Polygon points={formatPoints(roofPts)} fill={lightColor} stroke="#ffffff" strokeWidth="1" />
+            </G>
+          );
+        })()}
+
+        {/* Flat View */}
+        {!is3D && isCircle && (
+          <Circle cx={building.circle!.cx} cy={building.circle!.cy} r={building.circle!.r} fill={building.color} opacity={0.5} stroke="#ffffff" strokeWidth="1" />
+        )}
+        {!is3D && !isCircle && building.polygon && (
+          <Polygon points={formatPoints(parsePoints(building.polygon))} fill={building.color} opacity={0.5} stroke="#ffffff" strokeWidth="1" />
         )}
 
-        {/* Selected Highlight */}
-        {isSelected && (
-          <Polygon
-            points={is3D ? roofString : baseString}
-            fill="none"
-            stroke={accent.primary}
-            strokeWidth="3"
-          />
+        {/* Highlight */}
+        {isSelected && isCircle && (
+          <Circle cx={building.circle!.cx + dx} cy={building.circle!.cy + dy} r={building.circle!.r} fill="none" stroke={accent.primary} strokeWidth="3" />
+        )}
+        {isSelected && !isCircle && building.polygon && (
+          <Polygon points={formatPoints(parsePoints(building.polygon!).map(p => ({ x: p.x + dx, y: p.y + dy })))} fill="none" stroke={accent.primary} strokeWidth="3" />
         )}
 
         {/* Label */}
         <SvgText
-          x={center.x + (is3D ? dx : 0)}
-          y={center.y + (is3D ? dy : 0)}
+          x={center.x + dx}
+          y={center.y + dy}
           fill="#ffffff"
-          fontSize="14"
+          fontSize="12"
           fontWeight="bold"
           textAnchor="middle"
           alignmentBaseline="middle"
         >
           {building.number}
         </SvgText>
-        
-        {isSelected && (
-          <SvgText
-            x={center.x + (is3D ? dx : 0)}
-            y={center.y + (is3D ? dy : 0) + 16}
-            fill="#ffffff"
-            fontSize="10"
-            fontWeight="bold"
-            textAnchor="middle"
-            alignmentBaseline="middle"
-          >
-            {building.shortName}
-          </SvgText>
-        )}
       </G>
     );
   };
@@ -211,13 +193,6 @@ export const CampusSvgCanvas: React.FC<CampusSvgCanvasProps> = ({
             <Stop offset="1" stopColor="#0F172A" stopOpacity="1" />
           </LinearGradient>
         </Defs>
-
-        {/* Ground */}
-        <Rect x="0" y="0" width="800" height="650" fill="url(#groundGrad)" />
-
-        {/* Walkways mock */}
-        <Line x1="100" y1="300" x2="700" y2="350" stroke="#334155" strokeWidth="20" strokeLinecap="round" />
-        <Line x1="400" y1="100" x2="350" y2="600" stroke="#334155" strokeWidth="20" strokeLinecap="round" />
 
         {/* Buildings */}
         {sortedBuildings.map(renderBuilding)}

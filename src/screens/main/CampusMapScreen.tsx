@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { View, StyleSheet, Dimensions, TextInput, TouchableOpacity, Text, ScrollView } from 'react-native';
+import { View, Image, StyleSheet, Dimensions, TextInput, TouchableOpacity, Text, ScrollView } from 'react-native';
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import Animated, { useSharedValue, useAnimatedStyle, withSpring, withTiming, runOnJS } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
@@ -47,6 +47,8 @@ export default function CampusMapScreen() {
   const savedTranslateY = useSharedValue(0);
 
   const panGesture = Gesture.Pan()
+    .minDistance(10)
+    .maxPointers(1)
     .onUpdate((e) => {
       translateX.value = savedTranslateX.value + e.translationX;
       translateY.value = savedTranslateY.value + e.translationY;
@@ -254,6 +256,7 @@ export default function CampusMapScreen() {
 
       <GestureDetector gesture={composedGesture}>
         <Animated.View style={[styles.mapViewport, animatedMapStyle]}>
+          <Image source={require('../../../assets/campus_map.png')} style={{ position: 'absolute', width: MAP_IMAGE_WIDTH, height: MAP_IMAGE_HEIGHT, opacity: 0.9 }} resizeMode="contain" />
           <CampusSvgCanvas
             width={MAP_IMAGE_WIDTH}
             height={MAP_IMAGE_HEIGHT}

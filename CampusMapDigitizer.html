@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Campus Map Digitizer 6.0 - Import & Export</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #111827; color: white; font-family: sans-serif; user-select: none; }
+        #canvas-wrapper { width: 100%; height: calc(100vh - 80px); background-color: #1f2937; position: relative; overflow: hidden; }
+        canvas { display: block; width: 100%; height: 100%; cursor: crosshair; }
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); align-items: center; justify-content: center; z-index: 50; }
+        .modal.active { display: flex; }
+        ::-webkit-scrollbar { width: 10px; height: 10px; }
+        ::-webkit-scrollbar-track { background: #1f2937; }
+        ::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 5px; }
+        ::-webkit-scrollbar-thumb:hover { background: #6b7280; }
+    </style>
+</head>
+<body class="flex flex-col h-screen">
+
+    <div class="h-20 bg-gray-800 border-b border-gray-700 flex items-center px-4 justify-between shrink-0">
+        <div class="flex items-center gap-4">
+            <h1 class="text-xl font-bold text-indigo-400">Campus Digitizer</h1>
+            
+            <div class="bg-gray-900 p-1 rounded-md flex border border-gray-700 ml-4">
+                <button class="mode-btn px-3 py-1.5 rounded text-sm bg-amber-600 text-white font-bold" data-mode="pan">✋ Pan / Move</button>
+                <button class="mode-btn px-3 py-1.5 rounded text-sm text-gray-400 hover:text-white" data-mode="building">🏗️ Polygons</button>
+                <button class="mode-btn px-3 py-1.5 rounded text-sm text-gray-400 hover:text-white" data-mode="circle">⭕ Circles</button>
+                <button class="mode-btn px-3 py-1.5 rounded text-sm text-gray-400 hover:text-white" data-mode="path">🛣️ Pathways</button>
+                <button class="mode-btn px-3 py-1.5 rounded text-sm text-gray-400 hover:text-white" data-mode="gate">🚪 Gates</button>
+            </div>
+        </div>
+
+        <div class="flex items-center gap-2">
+            <button id="btnCenterView" class="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 rounded text-xs font-bold border border-gray-600">🎯 Center Map</button>
+            <span id="zoomLabel" class="text-xs text-gray-400 font-mono mr-2">Zoom: 100%</span>
+            <button id="btnFinishPath" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 rounded-md text-xs hidden font-bold">Finish Path (Enter)</button>
+            <button id="btnUndo" class="px-3 py-1.5 bg-gray-600 hover:bg-gray-500 rounded-md text-xs">Undo</button>
+            <button id="btnCancel" class="px-3 py-1.5 bg-red-600 hover:bg-red-500 rounded-md text-xs">Cancel</button>
+            <button id="btnImport" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 rounded-md text-xs font-bold ml-2">📥 Import JSON</button>
+            <button id="btnExport" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 rounded-md text-xs font-bold">📤 Export JSON</button>
+        </div>
+    </div>
+
+    <div class="flex flex-1 overflow-hidden">
+        <div id="canvas-wrapper" class="flex-1">
+            <div id="instruction" class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-gray-500 text-lg pointer-events-none z-10 w-full text-center">
+                Loading campus_map.png...
+            </div>
+            <canvas id="mapCanvas"></canvas>
+        </div>
+
+        <div class="w-80 bg-gray-800 border-l border-gray-700 flex flex-col">
+            <div class="p-4 border-b border-gray-700">
+                <h2 class="font-bold text-sm mb-1" id="sidebarTitle">✋ Pan / Move Mode</h2>
+                <p class="text-xs text-gray-400" id="sidebarDesc">Left Click & Drag anywhere to move the map. Points are DISABLED.</p>
+            </div>
+            <div class="p-4 flex-1 overflow-y-auto">
+                <h2 class="font-bold text-sm mb-2 text-indigo-400">Buildings</h2>
+                <ul id="listBuildings" class="space-y-1 mb-4 text-xs"></ul>
+                <h2 class="font-bold text-sm mb-2 text-blue-400">Pathways</h2>
+                <ul id="listPaths" class="space-y-1 mb-4 text-xs"></ul>
+                <h2 class="font-bold text-sm mb-2 text-purple-400">Gates</h2>
+                <ul id="listGates" class="space-y-1 text-xs"></ul>
+            </div>
+        </div>
+    </div>
+
+    <div id="detailsModal" class="modal">
+        <div class="bg-gray-800 p-6 rounded-lg w-96 border border-gray-600 shadow-2xl">
+            <h3 class="text-xl font-bold mb-4">Building Details</h3>
+            <label class="block text-sm mb-1 text-gray-300">Building ID</label>
+            <input type="text" id="bId" class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 mb-4 text-white">
+            <label class="block text-sm mb-1 text-gray-300">Display Name</label>
+            <input type="text" id="bName" class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 mb-4 text-white">
+            <label class="block text-sm mb-1 text-gray-300">Category</label>
+            <select id="bCategory" class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 mb-4 text-white">
+                <option value="academic">Academic / Classes</option>
+                <option value="admin">Administration</option>
+                <option value="hostel">Hostel / Residential</option>
+                <option value="facility">Facility / Food / Library</option>
+            </select>
+            <label class="block text-sm mb-1 text-gray-300">Floors (Height Factor)</label>
+            <input type="number" id="bHeight" class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 mb-6 text-white" value="3" min="1" step="0.5">
+            <div class="flex justify-end gap-3">
+                <button id="modalCancel" class="px-4 py-2 bg-gray-600 hover:bg-gray-500 rounded text-sm">Cancel</button>
+                <button id="modalSave" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded text-sm font-bold">Save</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="gateModal" class="modal">
+        <div class="bg-gray-800 p-6 rounded-lg w-96 border border-gray-600 shadow-2xl">
+            <h3 class="text-xl font-bold mb-4">Gate Details</h3>
+            <label class="block text-sm mb-1 text-gray-300">Gate Name</label>
+            <input type="text" id="gName" class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 mb-6 text-white" placeholder="Main Gate">
+            <div class="flex justify-end gap-3">
+                <button id="gateCancel" class="px-4 py-2 bg-gray-600 rounded text-sm">Cancel</button>
+                <button id="gateSave" class="px-4 py-2 bg-purple-600 rounded text-sm font-bold">Save</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="exportModal" class="modal">
+        <div class="bg-gray-800 p-6 rounded-lg w-3/4 max-w-4xl border border-gray-600 flex flex-col h-3/4">
+            <h3 class="text-xl font-bold mb-2">Exported Code (JSON)</h3>
+            <textarea id="exportTextarea" class="w-full flex-1 bg-gray-900 border border-gray-700 rounded p-4 text-green-400 font-mono text-xs resize-none" readonly></textarea>
+            <div class="flex justify-end mt-4">
+                <button id="closeExport" class="px-6 py-2 bg-emerald-600 rounded font-bold">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Import Modal -->
+    <div id="importModal" class="modal">
+        <div class="bg-gray-800 p-6 rounded-lg w-3/4 max-w-4xl border border-gray-600 flex flex-col h-3/4">
+            <h3 class="text-xl font-bold mb-2">Import Data (JSON)</h3>
+            <p class="text-sm text-gray-400 mb-4">Paste your JSON string below to load all saved buildings, pathways, and gates onto the map canvas.</p>
+            <textarea id="importTextarea" class="w-full flex-1 bg-gray-900 border border-gray-700 rounded p-4 text-indigo-300 font-mono text-xs resize-none focus:outline-none" placeholder="Paste JSON here..."></textarea>
+            <div class="flex justify-end gap-3 mt-4">
+                <button id="cancelImport" class="px-6 py-2 bg-gray-600 hover:bg-gray-500 rounded text-sm">Cancel</button>
+                <button id="confirmImport" class="px-6 py-2 bg-blue-600 hover:bg-blue-500 rounded font-bold text-sm">Load Data</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('mapCanvas'), ctx = canvas.getContext('2d');
+        const wrapper = document.getElementById('canvas-wrapper');
+        
+        let img = new Image(); let isImageLoaded = false;
+        let scale = 1, offsetX = 0, offsetY = 0;
+        let isDragging = false, dragStart = { x: 0, y: 0 };
+        let mousePos = { x: 0, y: 0 };
+        
+        let data = { buildings: [], paths: [], gates: [] };
+        
+        let currentMode = 'pan';
+        let currentPoints = [];
+        let circleCenter = null;
+        let tempShapeData = null;
+        let tempGatePoint = null;
+
+        window.addEventListener('resize', () => { canvas.width = wrapper.clientWidth; canvas.height = wrapper.clientHeight; draw(); });
+        canvas.width = wrapper.clientWidth; canvas.height = wrapper.clientHeight;
+
+        function centerMap() {
+            if (!isImageLoaded) return;
+            scale = Math.min(canvas.width / img.naturalWidth, canvas.height / img.naturalHeight) * 0.9;
+            offsetX = (canvas.width - img.naturalWidth * scale) / 2;
+            offsetY = (canvas.height - img.naturalHeight * scale) / 2;
+            document.getElementById('zoomLabel').innerText = `Zoom: ${Math.round(scale * 100)}%`;
+            draw();
+        }
+
+        document.getElementById('btnCenterView').addEventListener('click', centerMap);
+
+        img.src = 'assets/campus_map.png';
+        img.onload = () => {
+            isImageLoaded = true; document.getElementById('instruction').style.display = 'none';
+            centerMap();
+            loadAutoSavedData();
+        };
+        img.onerror = () => { img.src = 'src/assets/campus_map.png'; }
+
+        function getTruePos(clientX, clientY) {
+            const rect = canvas.getBoundingClientRect();
+            return { x: (clientX - rect.left - offsetX) / scale, y: (clientY - rect.top - offsetY) / scale };
+        }
+
+        canvas.addEventListener('contextmenu', e => e.preventDefault());
+
+        canvas.addEventListener('wheel', (e) => {
+            if (!isImageLoaded) return; e.preventDefault();
+            const oldScale = scale, zoomSpeed = 0.1;
+            scale *= (e.deltaY < 0) ? (1 + zoomSpeed) : (1 - zoomSpeed);
+            scale = Math.max(0.1, Math.min(scale, 20));
+            document.getElementById('zoomLabel').innerText = `Zoom: ${Math.round(scale * 100)}%`;
+            const rect = canvas.getBoundingClientRect();
+            const mouseX = e.clientX - rect.left, mouseY = e.clientY - rect.top;
+            offsetX = mouseX - (mouseX - offsetX) * (scale / oldScale);
+            offsetY = mouseY - (mouseY - offsetY) * (scale / oldScale);
+            draw();
+        }, { passive: false });
+
+        canvas.addEventListener('mousedown', (e) => {
+            if (!isImageLoaded) return;
+
+            if (currentMode === 'pan' || e.button === 1 || e.button === 2 || e.shiftKey) {
+                isDragging = true;
+                dragStart = { x: e.clientX - offsetX, y: e.clientY - offsetY };
+                canvas.style.cursor = 'grabbing';
+                return;
+            }
+
+            if (e.button === 0) {
+                const p = getTruePos(e.clientX, e.clientY);
+                const x = Math.round(p.x), y = Math.round(p.y);
+
+                if (currentMode === 'building') {
+                    if (currentPoints.length > 2 && Math.hypot(x - currentPoints[0].x, y - currentPoints[0].y) < 15 / scale) {
+                        tempShapeData = { type: 'polygon', polygon: [...currentPoints] };
+                        openDetailsModal(); return;
+                    }
+                    currentPoints.push({ x, y });
+                } else if (currentMode === 'circle') {
+                    if (!circleCenter) {
+                        circleCenter = { x, y };
+                    } else {
+                        const r = Math.round(Math.hypot(x - circleCenter.x, y - circleCenter.y));
+                        if (r > 2) {
+                            tempShapeData = { type: 'circle', center: { ...circleCenter }, radius: r };
+                            openDetailsModal();
+                        }
+                        circleCenter = null;
+                    }
+                } else if (currentMode === 'path') {
+                    currentPoints.push({ x, y });
+                } else if (currentMode === 'gate') {
+                    tempGatePoint = { x, y };
+                    document.getElementById('gateModal').classList.add('active');
+                    document.getElementById('gName').value = ''; document.getElementById('gName').focus();
+                }
+                draw();
+            }
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+            if (!isImageLoaded) return;
+            if (isDragging) { 
+                offsetX = e.clientX - dragStart.x; 
+                offsetY = e.clientY - dragStart.y; 
+                draw(); 
+                return; 
+            }
+            mousePos = getTruePos(e.clientX, e.clientY); draw();
+        });
+
+        canvas.addEventListener('mouseup', () => { 
+            isDragging = false; 
+            canvas.style.cursor = currentMode === 'pan' ? 'grab' : 'crosshair'; 
+        });
+        canvas.addEventListener('mouseleave', () => { isDragging = false; });
+
+        document.querySelectorAll('.mode-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                document.querySelectorAll('.mode-btn').forEach(b => { 
+                    b.classList.remove('bg-indigo-600', 'bg-amber-600', 'text-white', 'font-bold'); 
+                    b.classList.add('text-gray-400'); 
+                });
+                
+                currentMode = e.target.dataset.mode;
+                e.target.classList.remove('text-gray-400'); 
+                e.target.classList.add('text-white', 'font-bold');
+                
+                currentPoints = []; circleCenter = null;
+                const title = document.getElementById('sidebarTitle'), desc = document.getElementById('sidebarDesc'), fb = document.getElementById('btnFinishPath');
+                fb.classList.add('hidden');
+
+                if (currentMode === 'pan') {
+                    e.target.classList.add('bg-amber-600');
+                    title.innerText = '✋ Pan / Move Mode'; 
+                    desc.innerText = 'Left Click & Drag anywhere to move the map. Points are DISABLED.';
+                    canvas.style.cursor = 'grab';
+                } else if (currentMode === 'building') { 
+                    e.target.classList.add('bg-indigo-600');
+                    title.innerText = '🏗️ Polygon Mode'; 
+                    desc.innerText = 'Left Click to trace. Right Click / Switch to Pan to move map.'; 
+                    canvas.style.cursor = 'crosshair';
+                } else if (currentMode === 'circle') { 
+                    e.target.classList.add('bg-indigo-600');
+                    title.innerText = '⭕ Circle Mode'; 
+                    desc.innerText = 'Click center, then click edge to set radius.'; 
+                    canvas.style.cursor = 'crosshair';
+                } else if (currentMode === 'path') { 
+                    e.target.classList.add('bg-indigo-600');
+                    title.innerText = '🛣️ Pathway Mode'; 
+                    fb.classList.remove('hidden'); 
+                    canvas.style.cursor = 'crosshair';
+                } else if (currentMode === 'gate') { 
+                    e.target.classList.add('bg-indigo-600');
+                    title.innerText = '🚪 Gate Mode'; 
+                    canvas.style.cursor = 'crosshair';
+                }
+                draw();
+            });
+        });
+
+        function autoSave() { try { localStorage.setItem('digitizer_saved_data', JSON.stringify(data)); } catch(e){} }
+        function loadAutoSavedData() {
+            try {
+                const saved = localStorage.getItem('digitizer_saved_data');
+                if (saved) {
+                    const parsed = JSON.parse(saved);
+                    if (parsed && (parsed.buildings || parsed.paths || parsed.gates)) {
+                        data = parsed; updateSidebar(); draw();
+                    }
+                }
+            } catch(e){}
+        }
+
+        document.getElementById('btnFinishPath').addEventListener('click', finishPath);
+        document.addEventListener('keydown', (e) => { if (e.key === 'Enter' && currentMode === 'path') finishPath(); });
+        function finishPath() { if (currentPoints.length > 1) { data.paths.push({ id: 'path_' + (data.paths.length + 1), nodes: [...currentPoints] }); currentPoints = []; autoSave(); updateSidebar(); draw(); } }
+
+        document.getElementById('btnUndo').addEventListener('click', () => { if (currentPoints.length > 0) currentPoints.pop(); circleCenter = null; draw(); });
+        document.getElementById('btnCancel').addEventListener('click', () => { currentPoints = []; circleCenter = null; draw(); });
+
+        const detailsModal = document.getElementById('detailsModal');
+        function openDetailsModal() {
+            detailsModal.classList.add('active');
+            document.getElementById('bId').value = 'block_' + (data.buildings.length + 1);
+            document.getElementById('bName').value = ''; document.getElementById('bName').focus();
+        }
+        document.getElementById('modalCancel').addEventListener('click', () => { detailsModal.classList.remove('active'); tempShapeData = null; });
+        document.getElementById('modalSave').addEventListener('click', () => {
+            const b = {
+                id: document.getElementById('bId').value,
+                name: document.getElementById('bName').value || 'Building',
+                category: document.getElementById('bCategory').value,
+                heightFactor: parseFloat(document.getElementById('bHeight').value) || 1,
+                type: tempShapeData.type
+            };
+            if (b.type === 'circle') { b.center = tempShapeData.center; b.radius = tempShapeData.radius; }
+            else { b.polygon = tempShapeData.polygon; }
+            data.buildings.push(b);
+            currentPoints = []; circleCenter = null; tempShapeData = null;
+            detailsModal.classList.remove('active'); autoSave(); updateSidebar(); draw();
+        });
+
+        document.getElementById('gateCancel').addEventListener('click', () => { document.getElementById('gateModal').classList.remove('active'); tempGatePoint = null; });
+        document.getElementById('gateSave').addEventListener('click', () => {
+            data.gates.push({ id: 'gate_' + (data.gates.length + 1), name: document.getElementById('gName').value || 'Gate', x: tempGatePoint.x, y: tempGatePoint.y });
+            document.getElementById('gateModal').classList.remove('active'); tempGatePoint = null; autoSave(); updateSidebar(); draw();
+        });
+
+        // Export Modal
+        document.getElementById('btnExport').addEventListener('click', () => {
+            document.getElementById('exportTextarea').value = JSON.stringify(data, null, 2);
+            document.getElementById('exportModal').classList.add('active');
+        });
+        document.getElementById('closeExport').addEventListener('click', () => document.getElementById('exportModal').classList.remove('active'));
+
+        // Import Modal logic
+        const importModal = document.getElementById('importModal');
+        document.getElementById('btnImport').addEventListener('click', () => {
+            document.getElementById('importTextarea').value = '';
+            importModal.classList.add('active');
+        });
+        document.getElementById('cancelImport').addEventListener('click', () => importModal.classList.remove('active'));
+        document.getElementById('confirmImport').addEventListener('click', () => {
+            try {
+                const str = document.getElementById('importTextarea').value;
+                const parsed = JSON.parse(str);
+                if (parsed && (parsed.buildings || parsed.paths || parsed.gates)) {
+                    data = {
+                        buildings: parsed.buildings || [],
+                        paths: parsed.paths || [],
+                        gates: parsed.gates || []
+                    };
+                    autoSave();
+                    updateSidebar();
+                    draw();
+                    importModal.classList.remove('active');
+                } else {
+                    alert('Invalid JSON structure. Must contain buildings, paths, or gates.');
+                }
+            } catch(e) {
+                alert('Error parsing JSON: ' + e.message);
+            }
+        });
+
+        function updateSidebar() {
+            const lb = document.getElementById('listBuildings'); lb.innerHTML = '';
+            data.buildings.forEach((b, i) => lb.innerHTML += `<li class="bg-gray-700 p-1.5 rounded flex justify-between"><span>${b.type === 'circle' ? '⭕' : '🏗️'} ${b.name}</span><button class="text-red-400" onclick="del('buildings', ${i})">X</button></li>`);
+            const lp = document.getElementById('listPaths'); lp.innerHTML = '';
+            data.paths.forEach((p, i) => lp.innerHTML += `<li class="bg-gray-700 p-1.5 rounded flex justify-between"><span>🛣️ Path ${i+1}</span><button class="text-red-400" onclick="del('paths', ${i})">X</button></li>`);
+            const lg = document.getElementById('listGates'); lg.innerHTML = '';
+            data.gates.forEach((g, i) => lg.innerHTML += `<li class="bg-gray-700 p-1.5 rounded flex justify-between"><span>🚪 ${g.name}</span><button class="text-red-400" onclick="del('gates', ${i})">X</button></li>`);
+        }
+        window.del = function(type, index) { data[type].splice(index, 1); autoSave(); updateSidebar(); draw(); }
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            if (!isImageLoaded) return;
+            ctx.save(); ctx.translate(offsetX, offsetY); ctx.scale(scale, scale);
+            ctx.drawImage(img, 0, 0);
+
+            data.paths.forEach(p => {
+                ctx.beginPath(); ctx.moveTo(p.nodes[0].x, p.nodes[0].y);
+                for (let i = 1; i < p.nodes.length; i++) ctx.lineTo(p.nodes[i].x, p.nodes[i].y);
+                ctx.strokeStyle = '#3b82f6'; ctx.lineWidth = 4 / scale; ctx.stroke();
+            });
+
+            data.buildings.forEach(b => {
+                ctx.beginPath();
+                if (b.type === 'circle') {
+                    ctx.arc(b.center.x, b.center.y, b.radius, 0, Math.PI * 2);
+                } else {
+                    ctx.moveTo(b.polygon[0].x, b.polygon[0].y);
+                    for (let i = 1; i < b.polygon.length; i++) ctx.lineTo(b.polygon[i].x, b.polygon[i].y);
+                    ctx.closePath();
+                }
+                ctx.fillStyle = 'rgba(79, 70, 229, 0.4)'; ctx.fill();
+                ctx.strokeStyle = '#818cf8'; ctx.lineWidth = 2 / scale; ctx.stroke();
+                
+                let cx, cy;
+                if (b.type === 'circle') { cx = b.center.x; cy = b.center.y; }
+                else { cx = b.polygon.reduce((sum, p) => sum + p.x, 0) / b.polygon.length; cy = b.polygon.reduce((sum, p) => sum + p.y, 0) / b.polygon.length; }
+                ctx.fillStyle = 'white'; ctx.font = `bold ${14/scale}px sans-serif`; ctx.lineWidth = 3 / scale;
+                ctx.strokeText(b.name, cx - (15/scale), cy); ctx.fillText(b.name, cx - (15/scale), cy);
+            });
+
+            data.gates.forEach(g => {
+                ctx.beginPath(); ctx.arc(g.x, g.y, 8 / scale, 0, Math.PI*2);
+                ctx.fillStyle = '#a855f7'; ctx.fill(); ctx.lineWidth = 2 / scale; ctx.strokeStyle = 'white'; ctx.stroke();
+            });
+
+            if (currentMode === 'circle' && circleCenter) {
+                const r = Math.hypot(mousePos.x - circleCenter.x, mousePos.y - circleCenter.y);
+                ctx.beginPath(); ctx.arc(circleCenter.x, circleCenter.y, r, 0, Math.PI * 2);
+                ctx.strokeStyle = '#34d399'; ctx.lineWidth = 2 / scale; ctx.stroke();
+                ctx.beginPath(); ctx.arc(circleCenter.x, circleCenter.y, 4/scale, 0, Math.PI*2); ctx.fillStyle = '#10b981'; ctx.fill();
+            } else if (currentMode === 'building' && currentPoints.length > 0) {
+                ctx.beginPath(); ctx.moveTo(currentPoints[0].x, currentPoints[0].y);
+                for (let i = 1; i < currentPoints.length; i++) ctx.lineTo(currentPoints[i].x, currentPoints[i].y);
+                ctx.lineTo(mousePos.x, mousePos.y); 
+                ctx.strokeStyle = '#34d399'; ctx.lineWidth = 2 / scale; ctx.setLineDash([5/scale, 5/scale]); ctx.stroke(); ctx.setLineDash([]);
+                currentPoints.forEach((p, i) => { ctx.beginPath(); ctx.arc(p.x, p.y, 4 / scale, 0, Math.PI*2); ctx.fillStyle = i===0 ? '#10b981' : 'white'; ctx.fill(); });
+                if (currentPoints.length > 2 && Math.hypot(mousePos.x - currentPoints[0].x, mousePos.y - currentPoints[0].y) < 15 / scale) {
+                    ctx.beginPath(); ctx.arc(currentPoints[0].x, currentPoints[0].y, 15/scale, 0, Math.PI*2); ctx.fillStyle = 'rgba(16, 185, 129, 0.5)'; ctx.fill();
+                }
+            } else if (currentMode === 'path' && currentPoints.length > 0) {
+                ctx.beginPath(); ctx.moveTo(currentPoints[0].x, currentPoints[0].y);
+                for (let i = 1; i < currentPoints.length; i++) ctx.lineTo(currentPoints[i].x, currentPoints[i].y);
+                ctx.lineTo(mousePos.x, mousePos.y); 
+                ctx.strokeStyle = '#60a5fa'; ctx.lineWidth = 4 / scale; ctx.stroke();
+            }
+            
+            ctx.restore();
+        }
+    </script>
+</body>
+</html>
