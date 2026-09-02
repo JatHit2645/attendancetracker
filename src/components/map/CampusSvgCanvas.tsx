@@ -1,11 +1,15 @@
 import React, { useMemo, useEffect } from 'react';
 import { View, StyleSheet } from 'react-native';
-import Svg, { Polygon, Polyline, Circle, G, Text as SvgText, Rect, Line, Defs, LinearGradient, Stop } from 'react-native-svg';
+import Svg, {
+  Polygon, Polyline, Circle, G, Text as SvgText,
+  Rect, Defs, LinearGradient, Stop,
+} from 'react-native-svg';
 import Animated, { useSharedValue, useAnimatedProps, withRepeat, withTiming, Easing } from 'react-native-reanimated';
 import { CampusBuilding, MAIN_PATHS } from '../../data/CampusBuildings';
 import { MapNode } from '../../data/MapGraph';
 import { accent } from '../../theme/colors';
 
+const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 const AnimatedPolyline = Animated.createAnimatedComponent(Polyline);
 
 interface CampusSvgCanvasProps {
@@ -20,11 +24,13 @@ interface CampusSvgCanvasProps {
   onBuildingPress: (building: CampusBuilding) => void;
 }
 
+// ─── Utility Functions ──────────────────────────────────────────────
+
 function parsePoints(points: string | undefined): { x: number; y: number }[] {
   if (!points) return [];
   return points.split(' ').map(p => {
     const [x, y] = p.split(',').map(Number);
-    return { x, y };
+    return { x: x || 0, y: y || 0 };
   });
 }
 
@@ -57,6 +63,18 @@ function adjustColor(hex: string, amount: number): string {
   return `#${(r << 16 | g << 8 | b).toString(16).padStart(6, '0')}`;
 }
 
+// ─── Landmark Data ──────────────────────────────────────────────────
+
+const LANDMARKS = [
+  { id: 'parking_1', x: 650, y: 150, icon: '🅿️', label: 'Parking' },
+  { id: 'sports', x: 700, y: 550, icon: '⚽', label: 'Sports' },
+  { id: 'gate_main', x: 400, y: 140, icon: '🚪', label: 'Main Gate' },
+  { id: 'atm', x: 100, y: 170, icon: '🏧', label: 'ATM' },
+  { id: 'medical', x: 620, y: 280, icon: '🏥', label: 'Medical' },
+];
+
+// ─── Component ──────────────────────────────────────────────────────
+
 export const CampusSvgCanvas: React.FC<CampusSvgCanvasProps> = ({
   width,
   height,
@@ -68,6 +86,7 @@ export const CampusSvgCanvas: React.FC<CampusSvgCanvasProps> = ({
   livePosition,
   onBuildingPress,
 }) => {
+  // Route animation
   const dashOffset = useSharedValue(0);
 
   useEffect(() => {
@@ -82,12 +101,29 @@ export const CampusSvgCanvas: React.FC<CampusSvgCanvasProps> = ({
     }
   }, [route]);
 
-  const animatedPolylineProps = useAnimatedProps(() => {
-    return {
-      strokeDashoffset: dashOffset.value,
-    };
-  });
+  const animatedPolylineProps = useAnimatedProps(() => ({
+    strokeDashoffset: dashOffset.value,
+  }));
 
+  // GPS pulse animation
+  const pulseRadius = useSharedValue(12);
+
+  useEffect(() => {
+    if (livePosition) {
+      pulseRadius.value = withRepeat(
+        withTiming(20, { duration: 1500, easing: Easing.out(Easing.ease) }),
+        -1,
+        true
+      );
+    }
+  }, [livePosition]);
+
+  const animatedPulseProps = useAnimatedProps(() => ({
+    r: pulseRadius.value,
+    opacity: 1 - (pulseRadius.value - 12) / 16, // Fade as it expands
+  }));
+
+  // Sort buildings by Y for painter's algorithm
   const sortedBuildings = useMemo(() => {
     return [...buildings].sort((a, b) => {
       const aCenter = getCenter(a);
@@ -96,12 +132,13 @@ export const CampusSvgCanvas: React.FC<CampusSvgCanvasProps> = ({
     });
   }, [buildings]);
 
+  // ─── Render a single building ──────────────────────────────────────
+
   const renderBuilding = (building: CampusBuilding) => {
     const isSelected = selectedBuildingId === building.id;
     const center = getCenter(building);
     const heightFactor = building.heightFactor || 1;
-    
-    // Isometric shift
+
     const dx = is3D ? -heightFactor * 6 : 0;
     const dy = is3D ? -heightFactor * 12 : 0;
 
@@ -112,28 +149,38 @@ export const CampusSvgCanvas: React.FC<CampusSvgCanvasProps> = ({
 
     return (
       <G key={building.id}>
-        {/* Shadow */}
+        {/* ── Shadow ── */}
         {is3D && isCircle && (
-          <Circle cx={building.circle!.cx + 8} cy={building.circle!.cy + 8} r={building.circle!.r} fill="#000000" opacity={0.3} onPress={() => onBuildingPress(building)} />
+          <Circle
+            cx={building.circle!.cx + 8}
+            cy={building.circle!.cy + 8}
+            r={building.circle!.r}
+            fill="#000000"
+            opacity={0.25}
+          />
         )}
         {is3D && !isCircle && building.polygon && (
-          <Polygon points={formatPoints(parsePoints(building.polygon).map(p => ({ x: p.x + 8, y: p.y + 8 })))} fill="#000000" opacity={0.3} onPress={() => onBuildingPress(building)} />
+          <Polygon
+            points={formatPoints(parsePoints(building.polygon).map(p => ({ x: p.x + 8, y: p.y + 8 })))}
+            fill="#000000"
+            opacity={0.25}
+          />
         )}
 
-        {/* 3D Walls for Circle */}
+        {/* ── 3D Walls (Circle) ── */}
         {is3D && heightFactor > 0 && isCircle && (
-          <G onPress={() => onBuildingPress(building)}>
-            <Circle cx={building.circle!.cx + dx/2} cy={building.circle!.cy + dy/2} r={building.circle!.r} fill={darkColor} />
+          <G>
+            <Circle cx={building.circle!.cx + dx / 2} cy={building.circle!.cy + dy / 2} r={building.circle!.r} fill={darkColor} />
             <Circle cx={building.circle!.cx + dx} cy={building.circle!.cy + dy} r={building.circle!.r} fill={lightColor} stroke="#ffffff" strokeWidth="1" />
           </G>
         )}
 
-        {/* 3D Walls for Polygon */}
+        {/* ── 3D Walls (Polygon) ── */}
         {is3D && heightFactor > 0 && !isCircle && building.polygon && (() => {
           const basePts = parsePoints(building.polygon!);
           const roofPts = basePts.map(p => ({ x: p.x + dx, y: p.y + dy }));
           return (
-            <G onPress={() => onBuildingPress(building)}>
+            <G>
               {basePts.map((p, i) => {
                 const nextIdx = (i + 1) % basePts.length;
                 const nextP = basePts[nextIdx];
@@ -141,10 +188,16 @@ export const CampusSvgCanvas: React.FC<CampusSvgCanvasProps> = ({
                   { x: p.x, y: p.y },
                   { x: nextP.x, y: nextP.y },
                   { x: nextP.x + dx, y: nextP.y + dy },
-                  { x: p.x + dx, y: p.y + dy }
+                  { x: p.x + dx, y: p.y + dy },
                 ];
                 return (
-                  <Polygon key={`wall-${i}`} points={formatPoints(wallPts)} fill={darkColor} stroke="rgba(255,255,255,0.3)" strokeWidth="0.5" />
+                  <Polygon
+                    key={`wall-${building.id}-${i}`}
+                    points={formatPoints(wallPts)}
+                    fill={darkColor}
+                    stroke="rgba(255,255,255,0.2)"
+                    strokeWidth="0.5"
+                  />
                 );
               })}
               <Polygon points={formatPoints(roofPts)} fill={lightColor} stroke="#ffffff" strokeWidth="1" />
@@ -152,28 +205,54 @@ export const CampusSvgCanvas: React.FC<CampusSvgCanvasProps> = ({
           );
         })()}
 
-        {/* Flat View */}
+        {/* ── Flat View ── */}
         {!is3D && isCircle && (
-          <Circle cx={building.circle!.cx} cy={building.circle!.cy} r={building.circle!.r} fill={building.color} opacity={0.5} stroke="#ffffff" strokeWidth="1" onPress={() => onBuildingPress(building)} />
+          <Circle
+            cx={building.circle!.cx}
+            cy={building.circle!.cy}
+            r={building.circle!.r}
+            fill={building.color}
+            opacity={0.5}
+            stroke="#ffffff"
+            strokeWidth="1"
+          />
         )}
         {!is3D && !isCircle && building.polygon && (
-          <Polygon points={formatPoints(parsePoints(building.polygon))} fill={building.color} opacity={0.5} stroke="#ffffff" strokeWidth="1" onPress={() => onBuildingPress(building)} />
+          <Polygon
+            points={formatPoints(parsePoints(building.polygon))}
+            fill={building.color}
+            opacity={0.5}
+            stroke="#ffffff"
+            strokeWidth="1"
+          />
         )}
 
-        {/* Highlight */}
+        {/* ── Selection Highlight ── */}
         {isSelected && isCircle && (
-          <Circle cx={building.circle!.cx + dx} cy={building.circle!.cy + dy} r={building.circle!.r} fill="none" stroke={accent.primary} strokeWidth="3" />
+          <Circle
+            cx={building.circle!.cx + dx}
+            cy={building.circle!.cy + dy}
+            r={building.circle!.r + 3}
+            fill="none"
+            stroke={accent.primary}
+            strokeWidth="3"
+          />
         )}
         {isSelected && !isCircle && building.polygon && (
-          <Polygon points={formatPoints(parsePoints(building.polygon!).map(p => ({ x: p.x + dx, y: p.y + dy })))} fill="none" stroke={accent.primary} strokeWidth="3" />
+          <Polygon
+            points={formatPoints(parsePoints(building.polygon!).map(p => ({ x: p.x + dx, y: p.y + dy })))}
+            fill="none"
+            stroke={accent.primary}
+            strokeWidth="3"
+          />
         )}
 
-        {/* Label */}
+        {/* ── Building Label ── */}
         <SvgText
           x={center.x + dx}
           y={center.y + dy}
           fill="#ffffff"
-          fontSize="12"
+          fontSize="11"
           fontWeight="bold"
           textAnchor="middle"
           alignmentBaseline="middle"
@@ -185,6 +264,8 @@ export const CampusSvgCanvas: React.FC<CampusSvgCanvasProps> = ({
     );
   };
 
+  // ─── Main Render ───────────────────────────────────────────────────
+
   return (
     <View style={StyleSheet.absoluteFill}>
       <Svg width={width} height={height} viewBox="0 0 800 650">
@@ -193,31 +274,81 @@ export const CampusSvgCanvas: React.FC<CampusSvgCanvasProps> = ({
             <Stop offset="0" stopColor="#0F172A" stopOpacity="1" />
             <Stop offset="1" stopColor="#020617" stopOpacity="1" />
           </LinearGradient>
+          <LinearGradient id="routeGlow" x1="0" y1="0" x2="1" y2="0">
+            <Stop offset="0" stopColor={accent.primary} stopOpacity="0.8" />
+            <Stop offset="1" stopColor="#818CF8" stopOpacity="0.8" />
+          </LinearGradient>
         </Defs>
 
         {/* Background */}
         <Rect x="0" y="0" width="100%" height="100%" fill="url(#groundGrad)" />
 
+        {/* Grid pattern for depth */}
+        {Array.from({ length: 13 }, (_, i) => (
+          <Rect key={`gv-${i}`} x={i * 65} y="0" width="1" height="650" fill="rgba(255,255,255,0.02)" />
+        ))}
+        {Array.from({ length: 10 }, (_, i) => (
+          <Rect key={`gh-${i}`} x="0" y={i * 65} width="800" height="1" fill="rgba(255,255,255,0.02)" />
+        ))}
+
         {/* Main Paths (Roads) */}
         {MAIN_PATHS.map((path, idx) => (
           <G key={`main-path-${idx}`}>
+            {/* Road body */}
             <Polyline
               points={path.nodes.map(p => `${p.x},${p.y}`).join(' ')}
               fill="none"
-              stroke="#334155" // Gray paved road
+              stroke="#334155"
+              strokeWidth="10"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+            {/* Road edge */}
+            <Polyline
+              points={path.nodes.map(p => `${p.x},${p.y}`).join(' ')}
+              fill="none"
+              stroke="#475569"
               strokeWidth="12"
               strokeLinecap="round"
               strokeLinejoin="round"
+              opacity={0.3}
             />
+            {/* Center dashes */}
             <Polyline
               points={path.nodes.map(p => `${p.x},${p.y}`).join(' ')}
               fill="none"
-              stroke="#94A3B8" // Center line
-              strokeWidth="1.5"
-              strokeDasharray="6,6"
+              stroke="#64748B"
+              strokeWidth="1"
+              strokeDasharray="5,5"
               strokeLinecap="round"
               strokeLinejoin="round"
             />
+          </G>
+        ))}
+
+        {/* Landmarks */}
+        {LANDMARKS.map(lm => (
+          <G key={lm.id}>
+            <Circle cx={lm.x} cy={lm.y} r="10" fill="rgba(255,255,255,0.08)" />
+            <SvgText
+              x={lm.x}
+              y={lm.y + 4}
+              fontSize="12"
+              textAnchor="middle"
+              pointerEvents="none"
+            >
+              {lm.icon}
+            </SvgText>
+            <SvgText
+              x={lm.x}
+              y={lm.y + 20}
+              fill="rgba(255,255,255,0.4)"
+              fontSize="7"
+              textAnchor="middle"
+              pointerEvents="none"
+            >
+              {lm.label}
+            </SvgText>
           </G>
         ))}
 
@@ -226,27 +357,71 @@ export const CampusSvgCanvas: React.FC<CampusSvgCanvasProps> = ({
 
         {/* Route Line */}
         {route && route.path.length > 0 && (
-          <AnimatedPolyline
-            points={route.path.map(n => `${n.x},${n.y}`).join(' ')}
-            fill="none"
-            stroke={accent.primary}
-            strokeWidth="4"
-            strokeDasharray="12,6"
-            animatedProps={animatedPolylineProps}
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
+          <G>
+            {/* Glow shadow */}
+            <Polyline
+              points={route.path.map(n => `${n.x},${n.y}`).join(' ')}
+              fill="none"
+              stroke={accent.primary}
+              strokeWidth="8"
+              opacity={0.2}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+            {/* Animated dashes */}
+            <AnimatedPolyline
+              points={route.path.map(n => `${n.x},${n.y}`).join(' ')}
+              fill="none"
+              stroke={accent.primary}
+              strokeWidth="4"
+              strokeDasharray="12,6"
+              animatedProps={animatedPolylineProps}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+            {/* Distance markers */}
+            {route.path.filter((_, i) => i > 0 && i % 10 === 0).map((n, i) => (
+              <G key={`dist-${i}`}>
+                <Circle cx={n.x} cy={n.y} r="8" fill="rgba(99,102,241,0.8)" />
+                <SvgText x={n.x} y={n.y + 3} fill="#fff" fontSize="6" textAnchor="middle" fontWeight="bold">
+                  {Math.round(i * 10 * 0.5)}m
+                </SvgText>
+              </G>
+            ))}
+          </G>
         )}
 
-        {/* Live Position */}
+        {/* Live GPS Position */}
         {livePosition && (
-          <G transform={`translate(${livePosition.x}, ${livePosition.y})`}>
-            <Circle r="12" fill="rgba(59, 130, 246, 0.3)" />
-            <Circle r="6" fill="#3B82F6" stroke="#ffffff" strokeWidth="2" />
+          <G>
+            {/* Outer pulse ring */}
+            <AnimatedCircle
+              cx={livePosition.x}
+              cy={livePosition.y}
+              fill="rgba(59, 130, 246, 0.15)"
+              animatedProps={animatedPulseProps}
+            />
+            {/* Accuracy ring */}
+            <Circle
+              cx={livePosition.x}
+              cy={livePosition.y}
+              r="12"
+              fill="rgba(59, 130, 246, 0.25)"
+            />
+            {/* Core dot */}
+            <Circle
+              cx={livePosition.x}
+              cy={livePosition.y}
+              r="6"
+              fill="#3B82F6"
+              stroke="#ffffff"
+              strokeWidth="2"
+            />
+            {/* Heading arrow */}
             <Polygon
               points="-4,6 4,6 0,-8"
               fill="#ffffff"
-              transform={`rotate(${livePosition.heading})`}
+              transform={`translate(${livePosition.x}, ${livePosition.y}) rotate(${livePosition.heading || 0})`}
             />
           </G>
         )}
