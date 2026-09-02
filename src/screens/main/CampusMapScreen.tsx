@@ -46,6 +46,50 @@ export default function CampusMapScreen() {
   const savedTranslateX = useSharedValue(0);
   const savedTranslateY = useSharedValue(0);
 
+  // Hit testing logic for SVG
+  const isPointInPolygon = (point: {x: number, y: number}, vs: {x: number, y: number}[]) => {
+    let x = point.x, y = point.y;
+    let inside = false;
+    for (let i = 0, j = vs.length - 1; i < vs.length; j = i++) {
+      let xi = vs[i].x, yi = vs[i].y;
+      let xj = vs[j].x, yj = vs[j].y;
+      let intersect = ((yi > y) != (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
+      if (intersect) inside = !inside;
+    }
+    return inside;
+  };
+
+  const handleMapTap = (screenX: number, screenY: number) => {
+    const svgX = (screenX - (screenWidth / 2) - translateX.value) / scale.value + (MAP_IMAGE_WIDTH / 2);
+    const svgY = (screenY - (screenHeight / 3) - translateY.value) / scale.value + (MAP_IMAGE_HEIGHT / 2);
+
+    for (const b of CAMPUS_BUILDINGS) {
+      if (b.shapeType === 'circle' && b.circle) {
+        const dist = Math.sqrt(Math.pow(svgX - b.circle.cx, 2) + Math.pow(svgY - b.circle.cy, 2));
+        if (dist <= b.circle.r) {
+          handleSelectBuilding(b);
+          return;
+        }
+      } else if (b.shapeType === 'polygon' && b.polygon) {
+        const pts = b.polygon.split(' ').map(p => {
+          const [x, y] = p.split(',').map(Number);
+          return { x, y };
+        });
+        if (isPointInPolygon({x: svgX, y: svgY}, pts)) {
+          handleSelectBuilding(b);
+          return;
+        }
+      }
+    }
+  };
+
+  const tapGesture = Gesture.Tap()
+    .maxDistance(10)
+    .runOnJS(true)
+    .onEnd((e) => {
+      handleMapTap(e.x, e.y);
+    });
+
   const panGesture = Gesture.Pan()
     .minDistance(10)
     .maxPointers(1)
@@ -68,8 +112,7 @@ export default function CampusMapScreen() {
       savedScale.value = scale.value;
     });
 
-  const nativeGesture = Gesture.Native();
-  const composedGesture = Gesture.Simultaneous(panGesture, pinchGesture, nativeGesture);
+  const composedGesture = Gesture.Simultaneous(panGesture, pinchGesture, tapGesture);
 
   const animatedMapStyle = useAnimatedStyle(() => ({
     transform: [
@@ -123,8 +166,15 @@ export default function CampusMapScreen() {
       setIsLiveTracking(true);
       locationSub.current = await Location.watchPositionAsync(
         { accuracy: Location.Accuracy.High, timeInterval: 1000, distanceInterval: 1 },
-        (pos: any) => {
-          setLivePosition(pos);
+        async (pos: any) => {
+          const offset = await LocationService.getCalibrationOffset();
+          const pix = LocationService.gpsToPixel(pos.coords.latitude, pos.coords.longitude, offset);
+          const snapped = LocationService.snapToNearestPath(pix.x, pix.y);
+          setLivePosition({ 
+            x: snapped.x, 
+            y: snapped.y, 
+            heading: pos.coords.heading || 0 
+          });
         }
       );
     } catch (err) {
