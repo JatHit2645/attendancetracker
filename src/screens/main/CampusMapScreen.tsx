@@ -49,6 +49,7 @@ export default function CampusMapScreen() {
   const panGesture = Gesture.Pan()
     .minDistance(10)
     .maxPointers(1)
+    .cancelsTouchesInView(false)
     .onUpdate((e) => {
       translateX.value = savedTranslateX.value + e.translationX;
       translateY.value = savedTranslateY.value + e.translationY;
@@ -59,6 +60,7 @@ export default function CampusMapScreen() {
     });
 
   const pinchGesture = Gesture.Pinch()
+    .cancelsTouchesInView(false)
     .onUpdate((e) => {
       scale.value = Math.max(0.2, Math.min(savedScale.value * e.scale, 5));
     })
