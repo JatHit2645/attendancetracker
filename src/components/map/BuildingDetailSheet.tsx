@@ -45,7 +45,7 @@ export const BuildingDetailSheet: React.FC<BuildingDetailSheetProps> = ({
       enablePanDownToClose
       onClose={onClose}
       backgroundComponent={({ style }) => (
-        <BlurView intensity={80} tint="dark" style={[style, styles.blurBackground]} />
+        <View style={[style, styles.blurBackground, { backgroundColor: 'rgba(26, 26, 46, 0.95)' }]} />
       )}
       handleIndicatorStyle={{ backgroundColor: border.default }}
     >

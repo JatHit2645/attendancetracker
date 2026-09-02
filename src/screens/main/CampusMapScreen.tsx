@@ -60,6 +60,8 @@ export default function CampusMapScreen() {
   };
 
   const handleMapTap = (screenX: number, screenY: number) => {
+    const screenWidth = Dimensions.get('window').width;
+    const screenHeight = Dimensions.get('window').height;
     const svgX = (screenX - (screenWidth / 2) - translateX.value) / scale.value + (MAP_IMAGE_WIDTH / 2);
     const svgY = (screenY - (screenHeight / 3) - translateY.value) / scale.value + (MAP_IMAGE_HEIGHT / 2);
 
