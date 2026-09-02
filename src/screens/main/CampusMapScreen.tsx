@@ -60,13 +60,14 @@ export default function CampusMapScreen() {
 
   const pinchGesture = Gesture.Pinch()
     .onUpdate((e) => {
-      scale.value = savedScale.value * e.scale;
+      scale.value = Math.max(0.2, Math.min(savedScale.value * e.scale, 5));
     })
     .onEnd(() => {
       savedScale.value = scale.value;
     });
 
-  const composedGesture = Gesture.Simultaneous(panGesture, pinchGesture);
+  const nativeGesture = Gesture.Native();
+  const composedGesture = Gesture.Simultaneous(panGesture, pinchGesture, nativeGesture);
 
   const animatedMapStyle = useAnimatedStyle(() => ({
     transform: [
@@ -112,6 +113,11 @@ export default function CampusMapScreen() {
 
   const startLiveTracking = async () => {
     try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        alert('Permission to access location was denied');
+        return;
+      }
       setIsLiveTracking(true);
       locationSub.current = await Location.watchPositionAsync(
         { accuracy: Location.Accuracy.High, timeInterval: 1000, distanceInterval: 1 },

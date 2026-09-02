@@ -111,18 +111,18 @@ export const CampusSvgCanvas: React.FC<CampusSvgCanvasProps> = ({
     const isCircle = building.shapeType === 'circle' && building.circle;
 
     return (
-      <G key={building.id} onPress={() => onBuildingPress(building)}>
+      <G key={building.id}>
         {/* Shadow */}
         {is3D && isCircle && (
-          <Circle cx={building.circle!.cx + 8} cy={building.circle!.cy + 8} r={building.circle!.r} fill="#000000" opacity={0.3} />
+          <Circle cx={building.circle!.cx + 8} cy={building.circle!.cy + 8} r={building.circle!.r} fill="#000000" opacity={0.3} onPress={() => onBuildingPress(building)} />
         )}
         {is3D && !isCircle && building.polygon && (
-          <Polygon points={formatPoints(parsePoints(building.polygon).map(p => ({ x: p.x + 8, y: p.y + 8 })))} fill="#000000" opacity={0.3} />
+          <Polygon points={formatPoints(parsePoints(building.polygon).map(p => ({ x: p.x + 8, y: p.y + 8 })))} fill="#000000" opacity={0.3} onPress={() => onBuildingPress(building)} />
         )}
 
         {/* 3D Walls for Circle */}
         {is3D && heightFactor > 0 && isCircle && (
-          <G>
+          <G onPress={() => onBuildingPress(building)}>
             <Circle cx={building.circle!.cx + dx/2} cy={building.circle!.cy + dy/2} r={building.circle!.r} fill={darkColor} />
             <Circle cx={building.circle!.cx + dx} cy={building.circle!.cy + dy} r={building.circle!.r} fill={lightColor} stroke="#ffffff" strokeWidth="1" />
           </G>
@@ -133,7 +133,7 @@ export const CampusSvgCanvas: React.FC<CampusSvgCanvasProps> = ({
           const basePts = parsePoints(building.polygon!);
           const roofPts = basePts.map(p => ({ x: p.x + dx, y: p.y + dy }));
           return (
-            <G>
+            <G onPress={() => onBuildingPress(building)}>
               {basePts.map((p, i) => {
                 const nextIdx = (i + 1) % basePts.length;
                 const nextP = basePts[nextIdx];
@@ -154,10 +154,10 @@ export const CampusSvgCanvas: React.FC<CampusSvgCanvasProps> = ({
 
         {/* Flat View */}
         {!is3D && isCircle && (
-          <Circle cx={building.circle!.cx} cy={building.circle!.cy} r={building.circle!.r} fill={building.color} opacity={0.5} stroke="#ffffff" strokeWidth="1" />
+          <Circle cx={building.circle!.cx} cy={building.circle!.cy} r={building.circle!.r} fill={building.color} opacity={0.5} stroke="#ffffff" strokeWidth="1" onPress={() => onBuildingPress(building)} />
         )}
         {!is3D && !isCircle && building.polygon && (
-          <Polygon points={formatPoints(parsePoints(building.polygon))} fill={building.color} opacity={0.5} stroke="#ffffff" strokeWidth="1" />
+          <Polygon points={formatPoints(parsePoints(building.polygon))} fill={building.color} opacity={0.5} stroke="#ffffff" strokeWidth="1" onPress={() => onBuildingPress(building)} />
         )}
 
         {/* Highlight */}
@@ -177,6 +177,7 @@ export const CampusSvgCanvas: React.FC<CampusSvgCanvasProps> = ({
           fontWeight="bold"
           textAnchor="middle"
           alignmentBaseline="middle"
+          pointerEvents="none"
         >
           {building.number}
         </SvgText>
