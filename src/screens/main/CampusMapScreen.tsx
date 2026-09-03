@@ -69,27 +69,35 @@ export default function CampusMapScreen() {
   };
 
   const handleMapTap = (screenX: number, screenY: number) => {
-    // Convert screen coordinates to SVG coordinates
-    const svgX = (screenX - (SCREEN_WIDTH / 2) - translateX.value) / scale.value + (MAP_IMAGE_WIDTH / 2);
-    const svgY = (screenY - (SCREEN_HEIGHT / 3) - translateY.value) / scale.value + (MAP_IMAGE_HEIGHT / 2);
+    // Attempt 1: Direct translation (assuming e.x/e.y are pre-transform)
+    const svgX1 = (screenX - (SCREEN_WIDTH / 2) - translateX.value) / scale.value + (MAP_IMAGE_WIDTH / 2);
+    const svgY1 = (screenY - (SCREEN_HEIGHT / 3) - translateY.value) / scale.value + (MAP_IMAGE_HEIGHT / 2);
+    
+    // Attempt 2: Assuming e.x/e.y are already in the transformed SVG space
+    const svgX2 = screenX - (SCREEN_WIDTH - MAP_IMAGE_WIDTH) / 2;
+    const svgY2 = screenY - (SCREEN_HEIGHT - MAP_IMAGE_HEIGHT) / 2;
 
+    let bestMatch: CampusBuilding | null = null;
+    let minDistance = Infinity;
+
+    // Check all buildings against both coordinate spaces to find the absolute closest
     for (const b of CAMPUS_BUILDINGS) {
-      let hit = false;
-      if (b.shapeType === 'circle' && b.circle) {
-        const dist = Math.sqrt(Math.pow(svgX - b.circle.cx, 2) + Math.pow(svgY - b.circle.cy, 2));
-        hit = dist <= b.circle.r + 5; // 5px tolerance
-      } else if (b.shapeType === 'polygon' && b.polygon) {
-        const pts = b.polygon.split(' ').map(p => {
-          const [x, y] = p.split(',').map(Number);
-          return { x, y };
-        });
-        hit = isPointInPolygon({ x: svgX, y: svgY }, pts);
+      const bx = b.x ?? (MAP_IMAGE_WIDTH / 2);
+      const by = b.y ?? (MAP_IMAGE_HEIGHT / 2);
+      
+      const d1 = Math.sqrt(Math.pow(svgX1 - bx, 2) + Math.pow(svgY1 - by, 2));
+      const d2 = Math.sqrt(Math.pow(svgX2 - bx, 2) + Math.pow(svgY2 - by, 2));
+      
+      const d = Math.min(d1, d2);
+      if (d < minDistance) {
+        minDistance = d;
+        bestMatch = b;
       }
+    }
 
-      if (hit) {
-        handleSelectBuilding(b);
-        return;
-      }
+    if (bestMatch && minDistance < 100) { // Very generous hit radius (100 SVG pixels)
+      handleSelectBuilding(bestMatch);
+      return;
     }
 
     // Tapped empty space — close sheet
@@ -313,6 +321,9 @@ export default function CampusMapScreen() {
           ))}
         </ScrollView>
         <View style={styles.controlsRow}>
+          <TouchableOpacity style={[styles.controlButton, { backgroundColor: '#3B82F6', flex: 1 }]} onPress={() => handleSelectBuilding(CAMPUS_BUILDINGS.find(b => b.id === 'block_7') || CAMPUS_BUILDINGS[0])}>
+            <Text style={{ color: '#fff', fontSize: 12, fontWeight: 'bold' }}>Debug: Open Info Card</Text>
+          </TouchableOpacity>
           <TouchableOpacity style={styles.controlButton} onPress={() => setIs3D(!is3D)}>
             <Text style={styles.controlText}>{is3D ? '2D' : '3D'}</Text>
           </TouchableOpacity>

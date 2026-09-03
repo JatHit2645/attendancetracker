@@ -63,17 +63,7 @@ function adjustColor(hex: string, amount: number): string {
   return `#${(r << 16 | g << 8 | b).toString(16).padStart(6, '0')}`;
 }
 
-// ─── Landmark Data ──────────────────────────────────────────────────
 
-const LANDMARKS = [
-  { id: 'parking_1', x: 650, y: 150, icon: '🅿️', label: 'Parking' },
-  { id: 'sports', x: 700, y: 550, icon: '⚽', label: 'Sports' },
-  { id: 'gate_main', x: 400, y: 140, icon: '🚪', label: 'Main Gate' },
-  { id: 'atm', x: 100, y: 170, icon: '🏧', label: 'ATM' },
-  { id: 'medical', x: 620, y: 280, icon: '🏥', label: 'Medical' },
-];
-
-// ─── Component ──────────────────────────────────────────────────────
 
 export const CampusSvgCanvas: React.FC<CampusSvgCanvasProps> = ({
   width,
@@ -326,31 +316,7 @@ export const CampusSvgCanvas: React.FC<CampusSvgCanvasProps> = ({
           </G>
         ))}
 
-        {/* Landmarks */}
-        {LANDMARKS.map(lm => (
-          <G key={lm.id}>
-            <Circle cx={lm.x} cy={lm.y} r="10" fill="rgba(255,255,255,0.08)" />
-            <SvgText
-              x={lm.x}
-              y={lm.y + 4}
-              fontSize="12"
-              textAnchor="middle"
-              pointerEvents="none"
-            >
-              {lm.icon}
-            </SvgText>
-            <SvgText
-              x={lm.x}
-              y={lm.y + 20}
-              fill="rgba(255,255,255,0.4)"
-              fontSize="7"
-              textAnchor="middle"
-              pointerEvents="none"
-            >
-              {lm.label}
-            </SvgText>
-          </G>
-        ))}
+
 
         {/* Buildings */}
         {sortedBuildings.map(renderBuilding)}
