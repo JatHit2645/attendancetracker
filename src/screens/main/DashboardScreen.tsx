@@ -849,7 +849,7 @@ export default function DashboardScreen({ isActive = true }: { isActive?: boolea
                     </Text>
                     <TouchableOpacity
                       onPress={() => {
-                        // Navigate to Campus Map tab with building context
+                        DeviceEventEmitter.emit('navigate_tab', 'map');
                         DeviceEventEmitter.emit('NAVIGATE_TO_MAP', { roomNumber: item.roomNumber });
                       }}
                       style={{ padding: 4, borderRadius: 12, backgroundColor: accent.primarySurface }}

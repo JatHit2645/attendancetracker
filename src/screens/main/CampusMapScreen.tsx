@@ -1,16 +1,18 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   View, StyleSheet, Dimensions, TextInput, TouchableOpacity,
-  Text, ScrollView, Animated as RNAnimated,
+  Text, ScrollView, DeviceEventEmitter, Keyboard,
 } from 'react-native';
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
-import Animated, { useSharedValue, useAnimatedStyle, withSpring } from 'react-native-reanimated';
+import Animated, { useSharedValue, useAnimatedStyle, withSpring, runOnJS } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Location from 'expo-location';
 
 import { CampusSvgCanvas } from '../../components/map/CampusSvgCanvas';
 import { BuildingDetailSheet } from '../../components/map/BuildingDetailSheet';
 import { CAMPUS_BUILDINGS, CampusBuilding } from '../../data/CampusBuildings';
+import { INDOOR_DIRECTORIES, IndoorRoom } from '../../data/IndoorDirectories';
 import { PathfindingService } from '../../services/PathfindingService';
 import { LocationService } from '../../services/LocationService';
 import { MapNode } from '../../data/MapGraph';
@@ -27,10 +29,21 @@ const categories = [
   { key: 'admin', icon: 'briefcase', label: 'Admin' },
 ];
 
+function parsePoints(points: string | undefined): { x: number; y: number }[] {
+  if (!points) return [];
+  return points.split(' ').map(p => {
+    const [x, y] = p.split(',').map(Number);
+    return { x: x || 0, y: y || 0 };
+  });
+}
+
 export default function CampusMapScreen() {
+  const insets = useSafeAreaInsets();
+
   // ─── State ─────────────────────────────────────────────────────────
   const [selectedBuilding, setSelectedBuilding] = useState<CampusBuilding | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [isSearchFocused, setIsSearchFocused] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
   const [is3D, setIs3D] = useState(false);
   const [floor, setFloor] = useState(0);
@@ -41,11 +54,12 @@ export default function CampusMapScreen() {
   const [routeFrom, setRouteFrom] = useState<CampusBuilding | null>(null);
   const [livePosition, setLivePosition] = useState<{ x: number; y: number; heading: number } | null>(null);
   const [isLiveTracking, setIsLiveTracking] = useState(false);
+  const [followUser, setFollowUser] = useState(false);
   const [tooltip, setTooltip] = useState<{ x: number; y: number; name: string } | null>(null);
 
   // ─── Gesture Shared Values ─────────────────────────────────────────
-  const scale = useSharedValue(0.8);
-  const savedScale = useSharedValue(0.8);
+  const scale = useSharedValue(0.85);
+  const savedScale = useSharedValue(0.85);
   const translateX = useSharedValue(0);
   const translateY = useSharedValue(0);
   const savedTranslateX = useSharedValue(0);
@@ -55,55 +69,57 @@ export default function CampusMapScreen() {
   const locationSub = useRef<Location.LocationSubscription | null>(null);
   const tooltipTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // ─── Hit Testing ───────────────────────────────────────────────────
-  const isPointInPolygon = (point: { x: number; y: number }, vs: { x: number; y: number }[]) => {
-    let x = point.x, y = point.y;
+  // ─── Deterministic Point-in-Polygon (Raycasting) ───────────────────
+  const isPointInPolygon = (x: number, y: number, vs: { x: number; y: number }[]) => {
     let inside = false;
     for (let i = 0, j = vs.length - 1; i < vs.length; j = i++) {
-      let xi = vs[i].x, yi = vs[i].y;
-      let xj = vs[j].x, yj = vs[j].y;
-      let intersect = ((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
+      const xi = vs[i].x, yi = vs[i].y;
+      const xj = vs[j].x, yj = vs[j].y;
+      const intersect = ((yi > y) !== (yj > y)) && (x < ((xj - xi) * (y - yi)) / (yj - yi) + xi);
       if (intersect) inside = !inside;
     }
     return inside;
   };
 
   const handleMapTap = (screenX: number, screenY: number) => {
-    // Attempt 1: Direct translation (assuming e.x/e.y are pre-transform)
-    const svgX1 = (screenX - (SCREEN_WIDTH / 2) - translateX.value) / scale.value + (MAP_IMAGE_WIDTH / 2);
-    const svgY1 = (screenY - (SCREEN_HEIGHT / 3) - translateY.value) / scale.value + (MAP_IMAGE_HEIGHT / 2);
-    
-    // Attempt 2: Assuming e.x/e.y are already in the transformed SVG space
-    const svgX2 = screenX - (SCREEN_WIDTH - MAP_IMAGE_WIDTH) / 2;
-    const svgY2 = screenY - (SCREEN_HEIGHT - MAP_IMAGE_HEIGHT) / 2;
+    // Exact touch-to-SVG transformation
+    const svgCenterX = MAP_IMAGE_WIDTH / 2;   // 400
+    const svgCenterY = MAP_IMAGE_HEIGHT / 2;  // 325
+    const viewportCenterX = SCREEN_WIDTH / 2;
+    const viewportCenterY = SCREEN_HEIGHT / 2;
 
-    let bestMatch: CampusBuilding | null = null;
-    let minDistance = Infinity;
+    const svgX = (screenX - viewportCenterX - translateX.value) / scale.value + svgCenterX;
+    const svgY = (screenY - viewportCenterY - translateY.value) / scale.value + svgCenterY;
 
-    // Check all buildings against both coordinate spaces to find the absolute closest
+    // Strict boundary test: circle or polygon
+    let hitBuilding: CampusBuilding | null = null;
+
     for (const b of CAMPUS_BUILDINGS) {
-      const bx = b.x ?? (MAP_IMAGE_WIDTH / 2);
-      const by = b.y ?? (MAP_IMAGE_HEIGHT / 2);
-      
-      const d1 = Math.sqrt(Math.pow(svgX1 - bx, 2) + Math.pow(svgY1 - by, 2));
-      const d2 = Math.sqrt(Math.pow(svgX2 - bx, 2) + Math.pow(svgY2 - by, 2));
-      
-      const d = Math.min(d1, d2);
-      if (d < minDistance) {
-        minDistance = d;
-        bestMatch = b;
+      if (b.shapeType === 'circle' && b.circle) {
+        const dist = Math.hypot(svgX - b.circle.cx, svgY - b.circle.cy);
+        if (dist <= b.circle.r + 2) {
+          hitBuilding = b;
+          break;
+        }
+      } else if (b.polygon) {
+        const pts = parsePoints(b.polygon);
+        if (isPointInPolygon(svgX, svgY, pts)) {
+          hitBuilding = b;
+          break;
+        }
       }
     }
 
-    if (bestMatch && minDistance < 100) { // Very generous hit radius (100 SVG pixels)
-      handleSelectBuilding(bestMatch);
-      return;
-    }
-
-    // Tapped empty space — close sheet
-    if (selectedBuilding) {
-      setSelectedBuilding(null);
-      setTooltip(null);
+    if (hitBuilding) {
+      handleSelectBuilding(hitBuilding);
+    } else {
+      // Tapped open ground / road — dismiss detail sheet
+      if (selectedBuilding) {
+        setSelectedBuilding(null);
+        setTooltip(null);
+      }
+      setIsSearchFocused(false);
+      Keyboard.dismiss();
     }
   };
 
@@ -116,11 +132,15 @@ export default function CampusMapScreen() {
     });
 
   const panGesture = Gesture.Pan()
-    .minDistance(10)
+    .minDistance(8)
     .maxPointers(1)
     .onUpdate((e) => {
       translateX.value = savedTranslateX.value + e.translationX;
       translateY.value = savedTranslateY.value + e.translationY;
+      if (followUser) {
+        // User manually moved camera, release follow-me
+        runOnJS(setFollowUser)(false);
+      }
     })
     .onEnd(() => {
       savedTranslateX.value = translateX.value;
@@ -129,7 +149,7 @@ export default function CampusMapScreen() {
 
   const pinchGesture = Gesture.Pinch()
     .onUpdate((e) => {
-      scale.value = Math.max(0.3, Math.min(savedScale.value * e.scale, 4));
+      scale.value = Math.max(0.4, Math.min(savedScale.value * e.scale, 4.0));
     })
     .onEnd(() => {
       savedScale.value = scale.value;
@@ -144,21 +164,37 @@ export default function CampusMapScreen() {
     transform: [
       { translateX: translateX.value },
       { translateY: translateY.value },
-      { scale: scale.value }
-    ] as const
+      { scale: scale.value },
+    ] as const,
   }));
 
-  // ─── Camera ────────────────────────────────────────────────────────
-  const centerOnBuilding = (building: CampusBuilding) => {
-    const targetScale = 1.5;
-    scale.value = withSpring(targetScale);
+  // ─── Smart Camera Framing (Google Maps Style) ──────────────────────
+  const centerOnBuilding = (building: CampusBuilding, targetFloor = 0) => {
+    const targetScale = 1.45;
+    scale.value = withSpring(targetScale, { damping: 18, stiffness: 120 });
     savedScale.value = targetScale;
 
     const bx = building.x ?? (MAP_IMAGE_WIDTH / 2);
     const by = building.y ?? (MAP_IMAGE_HEIGHT / 2);
 
-    const tx = SCREEN_WIDTH / 2 - bx * targetScale;
-    const ty = SCREEN_HEIGHT / 3 - by * targetScale;
+    // Frame building in upper 28% of screen so it floats cleanly above bottom sheet
+    const targetScreenY = SCREEN_HEIGHT * 0.28;
+    const tx = -(bx - 400) * targetScale;
+    const ty = targetScreenY - (SCREEN_HEIGHT / 2) - (by - 325) * targetScale;
+
+    translateX.value = withSpring(tx, { damping: 18, stiffness: 120 });
+    translateY.value = withSpring(ty, { damping: 18, stiffness: 120 });
+    savedTranslateX.value = tx;
+    savedTranslateY.value = ty;
+  };
+
+  const centerOnCoordinates = (x: number, y: number) => {
+    const targetScale = Math.max(scale.value, 1.3);
+    scale.value = withSpring(targetScale);
+    savedScale.value = targetScale;
+
+    const tx = -(x - 400) * targetScale;
+    const ty = -(y - 325) * targetScale;
 
     translateX.value = withSpring(tx);
     translateY.value = withSpring(ty);
@@ -167,18 +203,71 @@ export default function CampusMapScreen() {
   };
 
   // ─── Building Selection ────────────────────────────────────────────
-  const handleSelectBuilding = (building: CampusBuilding) => {
-    setFloor(0); // Reset floor when selecting new building
+  const handleSelectBuilding = (building: CampusBuilding, targetFloor = 0) => {
+    setFloor(targetFloor);
     setSelectedBuilding(building);
-    centerOnBuilding(building);
+    centerOnBuilding(building, targetFloor);
+    setIsSearchFocused(false);
+    Keyboard.dismiss();
 
-    // Show tooltip briefly
     setTooltip({ x: building.x, y: building.y, name: building.name });
     if (tooltipTimeout.current) clearTimeout(tooltipTimeout.current);
-    tooltipTimeout.current = setTimeout(() => setTooltip(null), 3000);
+    tooltipTimeout.current = setTimeout(() => setTooltip(null), 2500);
   };
 
-  // ─── Location Tracking ─────────────────────────────────────────────
+  // ─── Event Listener for Timetable Deep Linking ─────────────────────
+  useEffect(() => {
+    const sub1 = DeviceEventEmitter.addListener(
+      'navigate_map_building',
+      ({ buildingId, floor: targetFloor = 0 }: { buildingId: string; floor?: number }) => {
+        const found = CAMPUS_BUILDINGS.find(b => b.id === buildingId);
+        if (found) {
+          handleSelectBuilding(found, targetFloor);
+        }
+      }
+    );
+
+    const sub2 = DeviceEventEmitter.addListener(
+      'NAVIGATE_TO_MAP',
+      ({ roomNumber }: { roomNumber?: string }) => {
+        if (!roomNumber) return;
+        const q = String(roomNumber).toLowerCase().trim();
+        let matchedBldg: CampusBuilding | null = null;
+        let matchedFloor = 0;
+
+        for (const [bldgId, floors] of Object.entries(INDOOR_DIRECTORIES)) {
+          for (const [floorNum, rooms] of Object.entries(floors)) {
+            for (const r of rooms) {
+              if (r.name.toLowerCase().includes(q) || r.id.toLowerCase().includes(q)) {
+                matchedBldg = CAMPUS_BUILDINGS.find(b => b.id === bldgId) || null;
+                matchedFloor = Number(floorNum);
+                break;
+              }
+            }
+            if (matchedBldg) break;
+          }
+          if (matchedBldg) break;
+        }
+
+        if (!matchedBldg) {
+          matchedBldg = CAMPUS_BUILDINGS.find(
+            b => b.name.toLowerCase().includes(q) || b.shortName.toLowerCase().includes(q) || b.number === q
+          ) || null;
+        }
+
+        if (matchedBldg) {
+          handleSelectBuilding(matchedBldg, matchedFloor);
+        }
+      }
+    );
+
+    return () => {
+      sub1.remove();
+      sub2.remove();
+    };
+  }, []);
+
+  // ─── Location Tracking & Follow-Me ─────────────────────────────────
   useEffect(() => {
     return () => {
       stopLiveTracking();
@@ -188,11 +277,11 @@ export default function CampusMapScreen() {
   const startLiveTracking = async () => {
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') {
-        // Don't crash, just alert
-        return;
-      }
+      if (status !== 'granted') return;
+
       setIsLiveTracking(true);
+      setFollowUser(true);
+
       locationSub.current = await Location.watchPositionAsync(
         { accuracy: Location.Accuracy.High, timeInterval: 2000, distanceInterval: 2 },
         async (pos) => {
@@ -200,26 +289,45 @@ export default function CampusMapScreen() {
             const offset = await LocationService.getCalibrationOffset();
             const pix = LocationService.gpsToPixel(pos.coords.latitude, pos.coords.longitude, offset);
             const snapped = LocationService.snapToNearestPath(pix.x, pix.y);
+            
             setLivePosition({
               x: snapped.x,
               y: snapped.y,
               heading: pos.coords.heading || 0,
             });
+
+            if (followUser) {
+              centerOnCoordinates(snapped.x, snapped.y);
+            }
           } catch (e) {
-            // Silently handle GPS conversion errors
+            // Safe fallback
           }
         }
       );
     } catch (err) {
       setIsLiveTracking(false);
+      setFollowUser(false);
     }
   };
 
   const stopLiveTracking = () => {
     setIsLiveTracking(false);
+    setFollowUser(false);
     locationSub.current?.remove();
     locationSub.current = null;
     setLivePosition(null);
+  };
+
+  const handleToggleLocation = () => {
+    if (!isLiveTracking) {
+      startLiveTracking();
+    } else if (!followUser && livePosition) {
+      // Recenter on user
+      setFollowUser(true);
+      centerOnCoordinates(livePosition.x, livePosition.y);
+    } else {
+      stopLiveTracking();
+    }
   };
 
   // ─── Calibration ───────────────────────────────────────────────────
@@ -229,9 +337,7 @@ export default function CampusMapScreen() {
         const pos = await Location.getCurrentPositionAsync({});
         await LocationService.saveCalibrationOffset(selectedBuilding.id, pos.coords.latitude, pos.coords.longitude);
       }
-    } catch (e) {
-      // Silently handle
-    }
+    } catch (e) {}
   };
 
   // ─── Navigation ────────────────────────────────────────────────────
@@ -257,7 +363,7 @@ export default function CampusMapScreen() {
         setRoute({
           path: result.path,
           minutes: result.estimatedMinutes,
-          distance: result.totalDistancePixels * 0.5, // pixel to meters
+          distance: result.totalDistancePixels * 0.5,
         });
       }
       setShowRoutePicker(false);
@@ -272,17 +378,48 @@ export default function CampusMapScreen() {
     setShowRoutePicker(false);
   };
 
-  // ─── Filtered buildings ────────────────────────────────────────────
+  // ─── Deep Room & Building Search ───────────────────────────────────
+  const searchResults = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return [];
+
+    const buildingMatches: { type: 'building'; building: CampusBuilding }[] = [];
+    CAMPUS_BUILDINGS.forEach(b => {
+      if (b.name.toLowerCase().includes(q) || b.shortName.toLowerCase().includes(q) || b.number.includes(q)) {
+        buildingMatches.push({ type: 'building', building: b });
+      }
+    });
+
+    const roomMatches: { type: 'room'; building: CampusBuilding; floor: number; room: IndoorRoom }[] = [];
+    Object.entries(INDOOR_DIRECTORIES).forEach(([bldgId, floors]) => {
+      const bldg = CAMPUS_BUILDINGS.find(b => b.id === bldgId);
+      if (!bldg) return;
+
+      Object.entries(floors).forEach(([floorNum, rooms]) => {
+        rooms.forEach(r => {
+          if (r.name.toLowerCase().includes(q)) {
+            roomMatches.push({
+              type: 'room',
+              building: bldg,
+              floor: Number(floorNum),
+              room: r,
+            });
+          }
+        });
+      });
+    });
+
+    return [...buildingMatches.slice(0, 4), ...roomMatches.slice(0, 6)];
+  }, [searchQuery]);
+
+  // ─── Filtered Buildings by Category ────────────────────────────────
   const filteredBuildings = useMemo(() => {
     return CAMPUS_BUILDINGS.filter((b) => {
-      const matchesSearch = b.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                            b.shortName?.toLowerCase().includes(searchQuery.toLowerCase());
-      const matchesCategory = selectedCategory === 'All' || b.category === selectedCategory;
-      return matchesSearch && matchesCategory;
+      if (selectedCategory === 'All') return true;
+      return b.category === selectedCategory;
     });
-  }, [searchQuery, selectedCategory]);
+  }, [selectedCategory]);
 
-  // ─── Route picker buildings (searchable) ───────────────────────────
   const pickerBuildings = useMemo(() => {
     return CAMPUS_BUILDINGS.filter(b => {
       if (routePickerMode === 'from') return true;
@@ -293,15 +430,79 @@ export default function CampusMapScreen() {
   // ─── Render ────────────────────────────────────────────────────────
   return (
     <GestureHandlerRootView style={styles.container}>
-      {/* Header Controls */}
-      <View style={styles.header}>
-        <TextInput
-          style={styles.searchInput}
-          placeholder="Search buildings..."
-          placeholderTextColor={textColors.tertiary}
-          value={searchQuery}
-          onChangeText={setSearchQuery}
-        />
+      {/* Header Controls (Safe Area Compliant) */}
+      <View style={[styles.header, { top: Math.max(48, insets.top + 8) }]}>
+        <View style={styles.searchBarContainer}>
+          <Ionicons name="search" size={18} color={textColors.secondary} style={{ marginLeft: 12 }} />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search buildings, labs, classrooms..."
+            placeholderTextColor={textColors.tertiary}
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            onFocus={() => setIsSearchFocused(true)}
+          />
+          {searchQuery.length > 0 && (
+            <TouchableOpacity onPress={() => { setSearchQuery(''); setIsSearchFocused(false); Keyboard.dismiss(); }} style={{ padding: 8 }}>
+              <Ionicons name="close-circle" size={18} color={textColors.secondary} />
+            </TouchableOpacity>
+          )}
+        </View>
+
+        {/* Autocomplete Dropdown */}
+        {isSearchFocused && searchResults.length > 0 && (
+          <View style={styles.searchDropdown}>
+            <ScrollView keyboardShouldPersistTaps="handled" nestedScrollEnabled style={{ maxHeight: 220 }}>
+              {searchResults.map((item, i) => {
+                if (item.type === 'building') {
+                  return (
+                    <TouchableOpacity
+                      key={`search_bldg_${item.building.id}_${i}`}
+                      style={styles.searchResultItem}
+                      onPress={() => {
+                        handleSelectBuilding(item.building, 0);
+                        setSearchQuery('');
+                      }}
+                    >
+                      <View style={[styles.searchResultBadge, { backgroundColor: item.building.color }]}>
+                        <Text style={styles.searchResultBadgeText}>{item.building.number}</Text>
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.searchResultTitle}>{item.building.name}</Text>
+                        <Text style={styles.searchResultSubtitle}>{item.building.shortName} • {item.building.type}</Text>
+                      </View>
+                      <Ionicons name="chevron-forward" size={16} color={textColors.tertiary} />
+                    </TouchableOpacity>
+                  );
+                } else {
+                  return (
+                    <TouchableOpacity
+                      key={`search_room_${item.room.id}_${i}`}
+                      style={styles.searchResultItem}
+                      onPress={() => {
+                        handleSelectBuilding(item.building, item.floor);
+                        setSearchQuery('');
+                      }}
+                    >
+                      <View style={[styles.searchResultBadge, { backgroundColor: '#6366F1' }]}>
+                        <Ionicons name="business" size={14} color="#fff" />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.searchResultTitle}>{item.room.name}</Text>
+                        <Text style={styles.searchResultSubtitle}>
+                          {item.building.name} • Floor {item.floor === 0 ? 'G' : item.floor}
+                        </Text>
+                      </View>
+                      <Ionicons name="arrow-forward" size={16} color={accent.primary} />
+                    </TouchableOpacity>
+                  );
+                }
+              })}
+            </ScrollView>
+          </View>
+        )}
+
+        {/* Category Filter Chips */}
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryScroll}>
           {categories.map((cat) => (
             <TouchableOpacity
@@ -320,19 +521,23 @@ export default function CampusMapScreen() {
             </TouchableOpacity>
           ))}
         </ScrollView>
+
+        {/* 2D/3D & GPS Floating Controls */}
         <View style={styles.controlsRow}>
-          <TouchableOpacity style={[styles.controlButton, { backgroundColor: '#3B82F6', flex: 1 }]} onPress={() => handleSelectBuilding(CAMPUS_BUILDINGS.find(b => b.id === 'block_7') || CAMPUS_BUILDINGS[0])}>
-            <Text style={{ color: '#fff', fontSize: 12, fontWeight: 'bold' }}>Debug: Open Info Card</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.controlButton} onPress={() => setIs3D(!is3D)}>
+          <TouchableOpacity style={styles.controlButton} onPress={() => setIs3D(!is3D)} activeOpacity={0.8}>
             <Text style={styles.controlText}>{is3D ? '2D' : '3D'}</Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.controlButton, isLiveTracking && styles.controlButtonActive]}
-            onPress={() => { if (isLiveTracking) stopLiveTracking(); else startLiveTracking(); }}
+            style={[
+              styles.controlButton,
+              isLiveTracking && styles.controlButtonActive,
+              followUser && { backgroundColor: '#10B981', borderColor: '#10B981' },
+            ]}
+            onPress={handleToggleLocation}
+            activeOpacity={0.8}
           >
             <Ionicons
-              name={isLiveTracking ? 'location' : 'location-outline'}
+              name={followUser ? 'navigate' : isLiveTracking ? 'location' : 'location-outline'}
               size={20}
               color={isLiveTracking ? '#fff' : textColors.primary}
             />
@@ -342,7 +547,7 @@ export default function CampusMapScreen() {
 
       {/* Navigation Banner */}
       {route && navigatingTo && (
-        <View style={styles.banner}>
+        <View style={[styles.banner, { top: Math.max(160, insets.top + 120) }]}>
           <View style={{ flex: 1 }}>
             <Text style={styles.bannerTitle}>Navigating to {navigatingTo.name}</Text>
             <Text style={styles.bannerSubtitle}>
@@ -350,7 +555,7 @@ export default function CampusMapScreen() {
             </Text>
           </View>
           <TouchableOpacity onPress={clearNavigation} style={styles.bannerClose}>
-            <Ionicons name="close-circle" size={28} color="#fff" />
+            <Ionicons name="close-circle" size={26} color="#fff" />
           </TouchableOpacity>
         </View>
       )}
@@ -360,7 +565,7 @@ export default function CampusMapScreen() {
         <View style={styles.routePickerOverlay}>
           <View style={styles.routePicker}>
             <Text style={styles.pickerTitle}>
-              {routePickerMode === 'from' ? '📍 Select Start Location' : `🎯 Navigate to where?`}
+              {routePickerMode === 'from' ? '📍 Select Start Location' : '🎯 Navigate to where?'}
             </Text>
             {routeFrom && routePickerMode === 'to' && (
               <Text style={styles.pickerFromLabel}>From: {routeFrom.name}</Text>
@@ -371,7 +576,6 @@ export default function CampusMapScreen() {
               <TouchableOpacity
                 style={[styles.pickerOption, { backgroundColor: 'rgba(59,130,246,0.15)' }]}
                 onPress={() => {
-                  // Create a virtual "current location" building
                   setRouteFrom({
                     id: 'current_location',
                     name: 'My Location',
@@ -434,7 +638,7 @@ export default function CampusMapScreen() {
       )}
 
       {/* Map Legend */}
-      <View style={styles.legend}>
+      <View style={[styles.legend, { bottom: Math.max(20, insets.bottom + 8) }]}>
         <View style={styles.legendRow}>
           <View style={[styles.legendDot, { backgroundColor: '#475569' }]} />
           <Text style={styles.legendLabel}>Academic</Text>
@@ -463,20 +667,74 @@ const styles = StyleSheet.create({
   },
   header: {
     position: 'absolute',
-    top: 50,
     left: 16,
     right: 16,
-    zIndex: 10,
+    zIndex: 15,
+  },
+  searchBarContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(19, 26, 42, 0.95)',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+    marginBottom: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 6,
   },
   searchInput: {
-    backgroundColor: canvas.overlay,
+    flex: 1,
     color: textColors.primary,
-    padding: 12,
-    borderRadius: 12,
-    marginBottom: 8,
-    borderColor: border.default,
-    borderWidth: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 10,
     fontSize: 14,
+  },
+  searchDropdown: {
+    backgroundColor: '#0C111C',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.15)',
+    marginBottom: 8,
+    paddingVertical: 6,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.5,
+    shadowRadius: 12,
+    elevation: 10,
+  },
+  searchResultItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.06)',
+    gap: 12,
+  },
+  searchResultBadge: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  searchResultBadgeText: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: 'bold',
+  },
+  searchResultTitle: {
+    color: textColors.primary,
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  searchResultSubtitle: {
+    color: textColors.secondary,
+    fontSize: 11,
+    marginTop: 2,
   },
   categoryScroll: {
     gap: 6,
@@ -487,11 +745,11 @@ const styles = StyleSheet.create({
   categoryChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: canvas.overlay,
+    backgroundColor: 'rgba(19, 26, 42, 0.9)',
     paddingHorizontal: 10,
-    paddingVertical: 5,
+    paddingVertical: 6,
     borderRadius: 16,
-    gap: 4,
+    gap: 5,
     borderColor: border.default,
     borderWidth: 1,
   },
@@ -513,15 +771,20 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   controlButton: {
-    backgroundColor: canvas.overlay,
+    backgroundColor: 'rgba(19, 26, 42, 0.9)',
     padding: 10,
     borderRadius: 20,
-    borderColor: border.default,
+    borderColor: 'rgba(255,255,255,0.12)',
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    minWidth: 40,
-    minHeight: 40,
+    minWidth: 42,
+    minHeight: 42,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 4,
   },
   controlButtonActive: {
     backgroundColor: accent.primary,
@@ -537,10 +800,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  // ─── Navigation Banner ──────────────────────────────────────────
   banner: {
     position: 'absolute',
-    top: 160,
     left: 16,
     right: 16,
     backgroundColor: accent.primary,
@@ -548,7 +809,12 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     flexDirection: 'row',
     alignItems: 'center',
-    zIndex: 11,
+    zIndex: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.35,
+    shadowRadius: 8,
+    elevation: 8,
   },
   bannerTitle: {
     color: '#fff',
@@ -556,21 +822,20 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   bannerSubtitle: {
-    color: 'rgba(255,255,255,0.8)',
+    color: 'rgba(255,255,255,0.85)',
     fontSize: 12,
     marginTop: 2,
   },
   bannerClose: {
     padding: 4,
   },
-  // ─── Route Picker ───────────────────────────────────────────────
   routePickerOverlay: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(0,0,0,0.6)',
+    backgroundColor: 'rgba(0,0,0,0.65)',
     justifyContent: 'center',
     alignItems: 'center',
     zIndex: 50,
@@ -631,16 +896,14 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     fontSize: 15,
   },
-  // ─── Map Legend ─────────────────────────────────────────────────
   legend: {
     position: 'absolute',
-    bottom: 20,
     left: 16,
-    backgroundColor: 'rgba(12, 17, 28, 0.9)',
+    backgroundColor: 'rgba(12, 17, 28, 0.92)',
     borderRadius: 12,
     padding: 10,
     borderWidth: 1,
-    borderColor: border.default,
+    borderColor: 'rgba(255,255,255,0.1)',
     zIndex: 5,
   },
   legendRow: {
